@@ -20,6 +20,8 @@ import {
   getBlocklist,
   isEmojiBlocked,
   normalizeEmoji,
+  addBlockedEmoji,
+  removeBlockedEmoji,
 } from "./blocklist";
 import type { DiscordWebhookPayload, DiscordReaction } from "./types";
 
@@ -35,7 +37,7 @@ export default {
   async fetch(
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     const url = new URL(request.url);
 
@@ -143,13 +145,10 @@ async function handleReactionAdd(
 
 /**
  * Admin endpoint for managing the blocklist.
- * In production, add proper authentication (e.g., Bearer token).
+ * WARNING: No auth by default. Add your own auth in production.
  */
 async function handleAdminRequest(request: Request, env: Env): Promise<Response> {
-  // WARNING: This endpoint has no auth by default. Add your own auth in production.
-  // Example: check a secret header or token.
-
-  const url = new URL(request.url);
+  // TODO: Add authentication (e.g., Bearer token check) before production use
   const method = request.method;
 
   if (method === "GET") {
@@ -198,9 +197,3 @@ async function handleAdminRequest(request: Request, env: Env): Promise<Response>
 
   return new Response("Method not allowed", { status: 405 });
 }
-
-// Import these for admin endpoint
-import {
-  addBlockedEmoji,
-  removeBlockedEmoji,
-} from "./blocklist";
