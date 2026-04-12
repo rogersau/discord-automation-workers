@@ -2,6 +2,7 @@
 /// <reference types="node/assert/strict" />
 
 import {
+  applyEmojiMutation,
   buildBlocklistConfig,
   isEmojiBlocked,
   normalizeEmoji,
@@ -49,6 +50,29 @@ test("missing bot_user_id materializes as an empty string", () => {
   const config = buildBlocklistConfig([], [], [], []);
 
   assert.equal(config.botUserId, "");
+});
+
+test("applyEmojiMutation adds uniquely and removes exact matches", () => {
+  const config = buildBlocklistConfig(
+    [{ normalized_emoji: "✅" }],
+    [],
+    [],
+    []
+  );
+
+  const added = applyEmojiMutation(config, {
+    scope: "global",
+    action: "add",
+    emoji: "❌",
+  });
+  const removed = applyEmojiMutation(added, {
+    scope: "global",
+    action: "remove",
+    emoji: "✅",
+  });
+
+  assert.deepEqual(added.emojis, ["✅", "❌"]);
+  assert.deepEqual(removed.emojis, ["❌"]);
 });
 
 test("normalizeEmoji handles null and empty input", () => {

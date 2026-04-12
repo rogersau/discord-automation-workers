@@ -40,6 +40,12 @@ export interface AppConfigRow {
   value: string;
 }
 
+export interface GlobalEmojiMutation {
+  scope: "global";
+  action: "add" | "remove";
+  emoji: string;
+}
+
 // Blocklist stored in KV
 export interface BlocklistConfig {
   emojis: string[];

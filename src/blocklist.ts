@@ -3,6 +3,7 @@
 import type {
   AppConfigRow,
   BlocklistConfig,
+  GlobalEmojiMutation,
   GlobalBlockedEmojiRow,
   GuildBlockedEmojiRow,
   GuildSettingRow,
@@ -41,6 +42,27 @@ export function buildBlocklistConfig(
   };
 }
 
+export function applyEmojiMutation(
+  config: BlocklistConfig,
+  mutation: GlobalEmojiMutation
+): BlocklistConfig {
+  const next = {
+    ...config,
+    emojis: [...config.emojis],
+    guilds: { ...config.guilds },
+  };
+
+  if (mutation.action === "add" && !next.emojis.includes(mutation.emoji)) {
+    next.emojis.push(mutation.emoji);
+  }
+
+  if (mutation.action === "remove") {
+    next.emojis = next.emojis.filter((emoji) => emoji !== mutation.emoji);
+  }
+
+  return next;
+}
+
 /**
  * Get the blocklist config from KV, or return defaults if not set.
  */
@@ -76,13 +98,17 @@ export async function addBlockedEmoji(
   emoji: string
 ): Promise<BlocklistConfig> {
   const config = await getBlocklist(kv);
+  const next = applyEmojiMutation(config, {
+    scope: "global",
+    action: "add",
+    emoji,
+  });
 
-  if (!config.emojis.includes(emoji)) {
-    config.emojis.push(emoji);
-    await setBlocklist(kv, config);
+  if (next.emojis.length !== config.emojis.length) {
+    await setBlocklist(kv, next);
   }
 
-  return config;
+  return next;
 }
 
 /**
@@ -93,11 +119,15 @@ export async function removeBlockedEmoji(
   emoji: string
 ): Promise<BlocklistConfig> {
   const config = await getBlocklist(kv);
+  const next = applyEmojiMutation(config, {
+    scope: "global",
+    action: "remove",
+    emoji,
+  });
 
-  config.emojis = config.emojis.filter((e) => e !== emoji);
-  await setBlocklist(kv, config);
+  await setBlocklist(kv, next);
 
-  return config;
+  return next;
 }
 
 /**

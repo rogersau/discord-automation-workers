@@ -17,22 +17,22 @@
 
 import { verifyDiscordSignature, deleteReaction } from "./discord";
 import {
-  getBlocklist,
   isEmojiBlocked,
   normalizeEmoji,
-  addBlockedEmoji,
-  removeBlockedEmoji,
 } from "./blocklist";
-import type { DiscordWebhookPayload, DiscordReaction } from "./types";
+import { ModerationStoreDO } from "./durable-objects/moderation-store";
+import type { Env as BaseEnv } from "./env";
+import type {
+  BlocklistConfig,
+  DiscordWebhookPayload,
+  DiscordReaction,
+} from "./types";
 
-// Environment bindings (defined in wrangler.toml)
-interface Env {
-  BLOCKLIST_KV: KVNamespace;
-  DISCORD_BOT_TOKEN: string;
-  DISCORD_PUBLIC_KEY: string;
-  BOT_USER_ID: string;
-  ADMIN_AUTH_SECRET?: string;
-}
+type Env = BaseEnv & {
+  MODERATION_STORE_DO: DurableObjectNamespace;
+};
+
+export { ModerationStoreDO };
 
 export default {
   async fetch(
@@ -120,7 +120,7 @@ async function handleReactionAdd(
   }
 
   // Check if this emoji is blocked
-  const blocklist = await getBlocklist(env.BLOCKLIST_KV);
+  const blocklist = await readModerationConfig(env);
 
   if (!isEmojiBlocked(emojiId, blocklist, reaction.guild_id)) {
     return;  // Not blocked, ignore
@@ -155,52 +155,34 @@ async function handleAdminRequest(request: Request, env: Env): Promise<Response>
   }
 
   const method = request.method;
+  const storeId = env.MODERATION_STORE_DO.idFromName("moderation-store");
+  const storeStub = env.MODERATION_STORE_DO.get(storeId);
 
   if (method === "GET") {
-    // Return current blocklist
-    const config = await getBlocklist(env.BLOCKLIST_KV);
-    return new Response(JSON.stringify(config, null, 2), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return storeStub.fetch("https://moderation-store/config");
   }
 
   if (method === "POST" || method === "PUT") {
-    // Add emoji to blocklist
-    try {
-      const body = (await request.json()) as { emoji?: string; action?: string };
-      const { emoji, action } = body;
-
-      if (!emoji || !action) {
-        return new Response(
-          JSON.stringify({ error: "Missing 'emoji' or 'action' field" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      let config;
-      if (action === "add") {
-        config = await addBlockedEmoji(env.BLOCKLIST_KV, emoji);
-      } else if (action === "remove") {
-        config = await removeBlockedEmoji(env.BLOCKLIST_KV, emoji);
-      } else {
-        return new Response(
-          JSON.stringify({ error: "Invalid action. Use 'add' or 'remove'" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      return new Response(JSON.stringify(config, null, 2), {
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch {
-      return new Response(
-        JSON.stringify({ error: "Invalid JSON body" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
+    return storeStub.fetch("https://moderation-store/emoji", {
+      method: request.method,
+      headers: { "Content-Type": "application/json" },
+      body: await request.text(),
+    });
   }
 
   return new Response("Method not allowed", { status: 405 });
+}
+
+async function readModerationConfig(env: Env): Promise<BlocklistConfig> {
+  const storeId = env.MODERATION_STORE_DO.idFromName("moderation-store");
+  const storeStub = env.MODERATION_STORE_DO.get(storeId);
+  const response = await storeStub.fetch("https://moderation-store/config");
+
+  if (!response.ok) {
+    throw new Error("Failed to read moderation config");
+  }
+
+  return (await response.json()) as BlocklistConfig;
 }
 
 function isAuthorizedAdminRequest(request: Request, env: Env): boolean {
