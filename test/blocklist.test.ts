@@ -1,16 +1,16 @@
-declare const require: (id: string) => unknown;
+/// <reference path="../node_modules/@types/node/assert.d.ts" />
+/// <reference path="../node_modules/@types/node/assert/strict.d.ts" />
 
-type TestFn = (name: string, fn: () => void) => void;
-type Assert = { equal(actual: unknown, expected: unknown): void };
-
-const test = require("node:test") as TestFn;
-const assert = require("node:assert/strict") as Assert;
+import { strict as assert } from "node:assert";
 
 import {
   buildBlocklistConfig,
   isEmojiBlocked,
   normalizeEmoji,
 } from "../src/blocklist";
+
+const requireFn = eval("require") as (id: string) => any;
+const test = requireFn("node:test");
 
 test("buildBlocklistConfig materializes global and guild rules", () => {
   const config = buildBlocklistConfig(
