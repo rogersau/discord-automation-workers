@@ -17,13 +17,13 @@
 
 import { verifyDiscordSignature, deleteReaction } from "./discord";
 import {
+  getBlocklist,
   isEmojiBlocked,
   normalizeEmoji,
 } from "./blocklist";
 import { ModerationStoreDO } from "./durable-objects/moderation-store";
 import type { Env as BaseEnv } from "./env";
 import type {
-  BlocklistConfig,
   DiscordWebhookPayload,
   DiscordReaction,
 } from "./types";
@@ -120,7 +120,7 @@ async function handleReactionAdd(
   }
 
   // Check if this emoji is blocked
-  const blocklist = await readModerationConfig(env);
+  const blocklist = await getBlocklist(env.BLOCKLIST_KV);
 
   if (!isEmojiBlocked(emojiId, blocklist, reaction.guild_id)) {
     return;  // Not blocked, ignore
@@ -171,18 +171,6 @@ async function handleAdminRequest(request: Request, env: Env): Promise<Response>
   }
 
   return new Response("Method not allowed", { status: 405 });
-}
-
-async function readModerationConfig(env: Env): Promise<BlocklistConfig> {
-  const storeId = env.MODERATION_STORE_DO.idFromName("moderation-store");
-  const storeStub = env.MODERATION_STORE_DO.get(storeId);
-  const response = await storeStub.fetch("https://moderation-store/config");
-
-  if (!response.ok) {
-    throw new Error("Failed to read moderation config");
-  }
-
-  return (await response.json()) as BlocklistConfig;
 }
 
 function isAuthorizedAdminRequest(request: Request, env: Env): boolean {
