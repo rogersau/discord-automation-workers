@@ -162,7 +162,7 @@ async function handleAdminRequest(request: Request, env: Env): Promise<Response>
   if (method === "POST" || method === "PUT") {
     // Add emoji to blocklist
     try {
-      const body = await request.json();
+      const body = (await request.json()) as { emoji?: string; action?: string };
       const { emoji, action } = body;
 
       if (!emoji || !action) {
