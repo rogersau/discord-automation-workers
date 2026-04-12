@@ -113,20 +113,22 @@ If you prefer managing the deployed blocklist directly in Cloudflare KV with Wra
 
 ```bash
 npx wrangler kv:key get blocklist_config --binding=BLOCKLIST_KV --text
-
-npx wrangler kv:key put blocklist_config \
-  --binding=BLOCKLIST_KV \
-  '{"emojis":["🏳️‍🌈","🏳️‍⚧️","🏳️","🟤","🏴","🏴‍☠️","☣️","🔞","🍎","✅"],"guilds":{},"botUserId":""}'
 ```
 
-The stored JSON must match the blocklist shape used by the Worker:
+Save the updated config to a file such as `blocklist_config.json`, then write it back to KV:
 
 ```json
 {
-  "emojis": ["🏳️‍🌈", "🏳️‍⚧️", "🏳️", "🟤", "🏴", "🏴‍☠️", "☣️", "🔞", "🍎"],
+  "emojis": ["🏳️‍🌈", "🏳️‍⚧️", "🏳️", "🟤", "🏴", "🏴‍☠️", "☣️", "🔞", "🍎", "✅"],
   "guilds": {},
   "botUserId": ""
 }
+```
+
+```bash
+npx wrangler kv:key put blocklist_config \
+  --binding=BLOCKLIST_KV \
+  --path ./blocklist_config.json
 ```
 
 If you use the admin API after setting `ADMIN_AUTH_SECRET`, send the same bearer token in the `Authorization` header:
