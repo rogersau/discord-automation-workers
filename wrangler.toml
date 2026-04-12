@@ -11,4 +11,4 @@ BOT_USER_ID = ""  # Set your bot's user ID after creating it in Discord Develope
 
 [[kv_namespaces]]
 binding = "BLOCKLIST_KV"
-id = ""  # Run `wrangler kv:namespace create BLOCKLIST_KV` and paste the id here
+id = "00000000000000000000000000000000"  # Replace with a real KV namespace id before deploy
