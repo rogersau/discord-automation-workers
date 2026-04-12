@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "outDir": "dist-tests",
+    "rootDir": ".",
+    "types": ["node"],
+    "lib": ["ES2022"]
+  },
+  "include": ["src/blocklist.ts", "src/types.ts", "test/**/*.test.ts"],
+  "exclude": ["dist-tests"]
+}

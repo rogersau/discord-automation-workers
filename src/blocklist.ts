@@ -1,8 +1,45 @@
 // Blocklist management via Cloudflare KV
 
-import { DEFAULT_BLOCKLIST, type BlocklistConfig } from "./types";
+import type {
+  AppConfigRow,
+  BlocklistConfig,
+  GlobalBlockedEmojiRow,
+  GuildBlockedEmojiRow,
+  GuildSettingRow,
+} from "./types";
+import { DEFAULT_BLOCKLIST } from "./types";
+import type { KVNamespace } from "@cloudflare/workers-types";
 
 const BLOCKLIST_KEY = "blocklist_config";
+
+export function buildBlocklistConfig(
+  globalRows: GlobalBlockedEmojiRow[],
+  guildRows: GuildSettingRow[],
+  guildEmojiRows: GuildBlockedEmojiRow[],
+  appConfigRows: AppConfigRow[]
+): BlocklistConfig {
+  const guilds: BlocklistConfig["guilds"] = {};
+  const botUserId =
+    appConfigRows.find((row) => row.key === "bot_user_id")?.value ?? "";
+
+  for (const row of guildRows) {
+    guilds[row.guild_id] = {
+      enabled: row.moderation_enabled === 1,
+      emojis: [],
+    };
+  }
+
+  for (const row of guildEmojiRows) {
+    guilds[row.guild_id] ??= { enabled: true, emojis: [] };
+    guilds[row.guild_id].emojis.push(row.normalized_emoji);
+  }
+
+  return {
+    emojis: globalRows.map((row) => row.normalized_emoji),
+    guilds,
+    botUserId,
+  };
+}
 
 /**
  * Get the blocklist config from KV, or return defaults if not set.

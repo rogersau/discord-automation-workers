@@ -21,6 +21,25 @@ export interface DiscordWebhookPayload {
   d: DiscordReaction | null;
 }
 
+export interface GlobalBlockedEmojiRow {
+  normalized_emoji: string;
+}
+
+export interface GuildSettingRow {
+  guild_id: string;
+  moderation_enabled: number;
+}
+
+export interface GuildBlockedEmojiRow {
+  guild_id: string;
+  normalized_emoji: string;
+}
+
+export interface AppConfigRow {
+  key: string;
+  value: string;
+}
+
 // Blocklist stored in KV
 export interface BlocklistConfig {
   emojis: string[];
