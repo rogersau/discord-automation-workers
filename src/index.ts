@@ -131,6 +131,7 @@ async function handleReactionAdd(
       reaction.channel_id,
       reaction.message_id,
       reaction.emoji,
+      reaction.user_id,
       env.DISCORD_BOT_TOKEN
     );
 

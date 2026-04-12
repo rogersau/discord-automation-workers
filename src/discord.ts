@@ -12,12 +12,13 @@ export async function deleteReaction(
   channelId: string,
   messageId: string,
   emoji: DiscordReaction["emoji"],
+  userId: string,
   botToken: string
 ): Promise<void> {
   // Encode emoji for URL - handle both custom and unicode emojis
   const encodedEmoji = encodeEmoji(emoji);
 
-  const url = `${DISCORD_API}/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}/@me`;
+  const url = `${DISCORD_API}/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}/${encodeURIComponent(userId)}`;
 
   const response = await fetch(url, {
     method: "DELETE",
@@ -52,7 +53,7 @@ function encodeEmoji(emoji: DiscordReaction["emoji"]): string {
 
 /**
  * Verify a Discord webhook request signature.
- * Discord signs requests with their public key using ECDSA (Ed25519).
+ * Discord signs requests with their public key using Ed25519.
  */
 export async function verifyDiscordSignature(
   body: string,
@@ -70,25 +71,18 @@ export async function verifyDiscordSignature(
   // Decode the signature from hex
   const signatureBytes = hexToBytes(signature);
 
-  // Use WebCrypto to verify the signature
-  // Discord uses P-256 (secp256r1), not Ed25519
+  // Use WebCrypto to verify the signature with Discord's Ed25519 public key
   try {
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
       publicKeyBytes,
-      {
-        name: "ECDSA",
-        namedCurve: "P-256",
-      },
+      "Ed25519",
       false,
       ["verify"]
     );
 
     const isValid = await crypto.subtle.verify(
-      {
-        name: "ECDSA",
-        hash: "SHA-256",
-      },
+      "Ed25519",
       cryptoKey,
       signatureBytes,
       signedPayload
@@ -102,6 +96,9 @@ export async function verifyDiscordSignature(
 }
 
 function hexToBytes(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0 || !/^[\da-fA-F]+$/.test(hex)) {
+    throw new Error("Invalid hex string");
+  }
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);

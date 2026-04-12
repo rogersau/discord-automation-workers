@@ -1,12 +1,12 @@
 # Discord Reaction Moderator
 
-A Cloudflare Worker that automatically removes blocked emoji reactions from Discord messages via webhooks.
+A Cloudflare Worker that applies emoji reaction moderation logic for forwarded Discord reaction events.
 
 ## Features
 
 - Blocks specified emoji reactions globally or per-guild
 - Easy emoji list management via admin API (no redeploys needed)
-- Discord webhook verification (Ed25519 signature)
+- Discord request verification for signed HTTP requests (Ed25519)
 - Free tier friendly (Cloudflare Workers generous free plan)
 
 ## Prerequisites
@@ -56,19 +56,17 @@ wrangler secret put DISCORD_PUBLIC_KEY
 
 In `wrangler.toml`, set `BOT_USER_ID` to your bot's user ID (found in Discord developer mode under the bot's profile).
 
-### 5. Create a Discord Webhook
+### 5. Forward reaction events to the Worker
 
 1. In Discord Developer Portal, go to your application
 2. Go to **OAuth2** → **OAuth2 URL Generator**
-3. Check `bot` and `applications.commands` scopes
+3. Check the `bot` scope
 4. For permissions, check:
    - `Manage Messages`
 5. Use the generated URL to add the bot to your server
+6. Run a Gateway-capable bot or relay that listens for `MESSAGE_REACTION_ADD` events and POSTs them to this Worker.
 
-6. Now create a webhook for your bot:
-   - In your server, go to **Server Settings** → **Integrations** → **Webhooks**
-   - Create a new webhook or use an existing channel's webhook
-   - Copy the webhook URL
+> Discord does **not** deliver `MESSAGE_REACTION_ADD` over standard webhooks or the Interactions Endpoint URL. Reaction events come from the Gateway API, so this repository needs a relay/bot process to forward those events into the Worker.
 
 ### 6. Deploy
 
@@ -78,16 +76,12 @@ npm run deploy
 
 Copy the worker URL (e.g., `https://discord-reaction-moderator.your-subdomain.workers.dev`).
 
-### 7. Configure Discord Webhook
+### 7. Point your relay at the Worker
 
-In Discord Developer Portal, add your worker URL as the **Interactions Endpoint URL**:
+Configure your Gateway relay to POST events to:
 ```
 https://your-worker-url.discord-reaction-moderator.workers.dev
 ```
-
-Alternatively, if using a channel webhook instead of bot events:
-- Point the channel webhook to your worker URL
-- Note: Channel webhooks only send `MESSAGE_REACTION_ADD`, not guild context
 
 ## Managing the Blocklist
 
