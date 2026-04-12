@@ -63,6 +63,20 @@ export function applyEmojiMutation(
   return next;
 }
 
+export async function getBlocklistFromStore(
+  fetchConfig: () => Promise<Response>
+): Promise<BlocklistConfig> {
+  const response = await fetchConfig();
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load moderation config from store (${response.status})`
+    );
+  }
+
+  return (await response.json()) as BlocklistConfig;
+}
+
 /**
  * Get the blocklist config from KV, or return defaults if not set.
  */

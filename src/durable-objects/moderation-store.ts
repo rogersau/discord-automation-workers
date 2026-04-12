@@ -9,6 +9,10 @@ import type { Env } from "../env";
 import { buildBlocklistConfig, normalizeEmoji } from "../blocklist";
 import { DEFAULT_BLOCKLIST } from "../types";
 
+const DEFAULT_SEED_KEY = "default_blocklist_seeded";
+
+class ModerationStoreInputError extends Error {}
+
 export class ModerationStoreDO implements DurableObject {
   private readonly sql: DurableObjectStorage["sql"];
 
@@ -33,12 +37,7 @@ export class ModerationStoreDO implements DurableObject {
       );
     `);
 
-    for (const emoji of DEFAULT_BLOCKLIST.emojis) {
-      this.sql.exec(
-        "INSERT OR IGNORE INTO global_blocked_emojis(normalized_emoji) VALUES(?)",
-        emoji
-      );
-    }
+    this.seedDefaultsOnce();
 
     this.sql.exec(
       "INSERT OR IGNORE INTO app_config(key, value) VALUES(?, ?)",
@@ -51,7 +50,11 @@ export class ModerationStoreDO implements DurableObject {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/config") {
-      return Response.json(this.readConfig());
+      try {
+        return Response.json(this.readConfig());
+      } catch (error) {
+        return this.errorResponse(error);
+      }
     }
 
     if (
@@ -59,8 +62,8 @@ export class ModerationStoreDO implements DurableObject {
       url.pathname === "/emoji"
     ) {
       try {
-        const body = await request.json<{ emoji?: string; action?: string }>();
-        return Response.json(await this.applyGlobalEmojiMutation(body));
+        const body = parseGlobalEmojiMutation(await request.json());
+        return Response.json(this.applyGlobalEmojiMutation(body));
       } catch (error) {
         return this.errorResponse(error);
       }
@@ -68,8 +71,8 @@ export class ModerationStoreDO implements DurableObject {
 
     if (request.method === "POST" && url.pathname === "/app-config") {
       try {
-        const body = await request.json<{ key?: string; value?: string }>();
-        return Response.json(await this.upsertAppConfig(body));
+        const body = parseAppConfigMutation(await request.json());
+        return Response.json(this.upsertAppConfig(body));
       } catch (error) {
         return this.errorResponse(error);
       }
@@ -108,14 +111,10 @@ export class ModerationStoreDO implements DurableObject {
     return buildBlocklistConfig(globalRows, guildRows, guildEmojiRows, appConfigRows);
   }
 
-  private async upsertAppConfig(body: {
-    key?: string;
-    value?: string;
-  }): Promise<{ ok: true }> {
-    if (!body.key || typeof body.value !== "string") {
-      throw new Error("Missing app config key or value");
-    }
-
+  private upsertAppConfig(body: {
+    key: string;
+    value: string;
+  }): { ok: true } {
     this.sql.exec(
       "INSERT INTO app_config(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       body.key,
@@ -125,38 +124,117 @@ export class ModerationStoreDO implements DurableObject {
     return { ok: true };
   }
 
-  private async applyGlobalEmojiMutation(body: {
-    emoji?: string;
-    action?: string;
-  }): Promise<BlocklistConfig> {
-    const normalizedEmoji = normalizeEmoji(body.emoji ?? null);
-    if (!normalizedEmoji || !body.action) {
-      throw new Error("Missing emoji or action");
-    }
-
-    if (body.action !== "add" && body.action !== "remove") {
-      throw new Error("Invalid action. Use 'add' or 'remove'");
-    }
-
+  private applyGlobalEmojiMutation(body: {
+    emoji: string;
+    action: "add" | "remove";
+  }): BlocklistConfig {
     if (body.action === "add") {
       this.sql.exec(
         "INSERT OR IGNORE INTO global_blocked_emojis(normalized_emoji) VALUES(?)",
-        normalizedEmoji
+        body.emoji
       );
     } else {
       this.sql.exec(
         "DELETE FROM global_blocked_emojis WHERE normalized_emoji = ?",
-        normalizedEmoji
+        body.emoji
       );
     }
 
     return this.readConfig();
   }
 
-  private errorResponse(error: unknown): Response {
-    const message =
-      error instanceof Error ? error.message : "Invalid JSON body";
+  private seedDefaultsOnce(): void {
+    const isSeeded =
+      [...this.sql.exec("SELECT key FROM app_config WHERE key = ?", DEFAULT_SEED_KEY)]
+        .length > 0;
 
-    return Response.json({ error: message }, { status: 400 });
+    if (isSeeded) {
+      return;
+    }
+
+    if (!this.hasExistingState()) {
+      for (const emoji of DEFAULT_BLOCKLIST.emojis) {
+        this.sql.exec(
+          "INSERT OR IGNORE INTO global_blocked_emojis(normalized_emoji) VALUES(?)",
+          emoji
+        );
+      }
+    }
+
+    this.sql.exec(
+      "INSERT OR IGNORE INTO app_config(key, value) VALUES(?, ?)",
+      DEFAULT_SEED_KEY,
+      "1"
+    );
   }
+
+  private hasExistingState(): boolean {
+    return (
+      [...this.sql.exec("SELECT 1 FROM global_blocked_emojis LIMIT 1")].length > 0 ||
+      [...this.sql.exec("SELECT 1 FROM guild_settings LIMIT 1")].length > 0 ||
+      [...this.sql.exec("SELECT 1 FROM guild_blocked_emojis LIMIT 1")].length > 0 ||
+      [...this.sql.exec("SELECT 1 FROM app_config LIMIT 1")].length > 0
+    );
+  }
+
+  private errorResponse(error: unknown): Response {
+    if (error instanceof SyntaxError || error instanceof ModerationStoreInputError) {
+      return Response.json(
+        { error: error.message || "Invalid JSON body" },
+        { status: 400 }
+      );
+    }
+
+    console.error("Moderation store request failed", error);
+    return Response.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+function parseGlobalEmojiMutation(body: unknown): {
+  emoji: string;
+  action: "add" | "remove";
+} {
+  if (!isRecord(body)) {
+    throw new ModerationStoreInputError("Invalid JSON body");
+  }
+
+  const normalizedEmoji = normalizeEmoji(asOptionalString(body.emoji));
+  const action = body.action;
+
+  if (!normalizedEmoji || typeof action !== "string") {
+    throw new ModerationStoreInputError("Missing emoji or action");
+  }
+
+  if (action !== "add" && action !== "remove") {
+    throw new ModerationStoreInputError("Invalid action. Use 'add' or 'remove'");
+  }
+
+  return {
+    emoji: normalizedEmoji,
+    action,
+  };
+}
+
+function parseAppConfigMutation(body: unknown): { key: string; value: string } {
+  if (
+    !isRecord(body) ||
+    typeof body.key !== "string" ||
+    body.key.length === 0 ||
+    typeof body.value !== "string"
+  ) {
+    throw new ModerationStoreInputError("Missing app config key or value");
+  }
+
+  return {
+    key: body.key,
+    value: body.value,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asOptionalString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }

@@ -17,7 +17,7 @@
 
 import { verifyDiscordSignature, deleteReaction } from "./discord";
 import {
-  getBlocklist,
+  getBlocklistFromStore,
   isEmojiBlocked,
   normalizeEmoji,
 } from "./blocklist";
@@ -120,7 +120,15 @@ async function handleReactionAdd(
   }
 
   // Check if this emoji is blocked
-  const blocklist = await getBlocklist(env.BLOCKLIST_KV);
+  let blocklist;
+  try {
+    blocklist = await getBlocklistFromStore(() =>
+      getModerationStoreStub(env).fetch("https://moderation-store/config")
+    );
+  } catch (error) {
+    console.error("Failed to load moderation config", error);
+    return;
+  }
 
   if (!isEmojiBlocked(emojiId, blocklist, reaction.guild_id)) {
     return;  // Not blocked, ignore
@@ -155,8 +163,7 @@ async function handleAdminRequest(request: Request, env: Env): Promise<Response>
   }
 
   const method = request.method;
-  const storeId = env.MODERATION_STORE_DO.idFromName("moderation-store");
-  const storeStub = env.MODERATION_STORE_DO.get(storeId);
+  const storeStub = getModerationStoreStub(env);
 
   if (method === "GET") {
     return storeStub.fetch("https://moderation-store/config");
@@ -171,6 +178,11 @@ async function handleAdminRequest(request: Request, env: Env): Promise<Response>
   }
 
   return new Response("Method not allowed", { status: 405 });
+}
+
+function getModerationStoreStub(env: Env): DurableObjectStub {
+  const storeId = env.MODERATION_STORE_DO.idFromName("moderation-store");
+  return env.MODERATION_STORE_DO.get(storeId);
 }
 
 function isAuthorizedAdminRequest(request: Request, env: Env): boolean {
