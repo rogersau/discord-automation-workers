@@ -298,6 +298,11 @@ test("guild-scoped emoji add and remove", async () => {
   );
   assert.equal(addResponse.status, 200);
 
+  const addBody = (await addResponse.json()) as any;
+  // POST should return the updated config
+  assert.equal(addBody.guilds["guild-1"]?.enabled, true);
+  assert.deepEqual(addBody.guilds["guild-1"]?.emojis, ["✅"]);
+
   const configResponse = await store.fetch(new Request("https://moderation-store/config"));
   const config = (await configResponse.json()) as any;
   assert.equal(config.guilds["guild-1"]?.enabled, true);
@@ -311,6 +316,11 @@ test("guild-scoped emoji add and remove", async () => {
     })
   );
   assert.equal(removeResponse.status, 200);
+
+  const removeBody = (await removeResponse.json()) as any;
+  // POST remove should also return the updated config
+  assert.equal(removeBody.guilds["guild-1"]?.enabled, true);
+  assert.deepEqual(removeBody.guilds["guild-1"]?.emojis, []);
 
   const configResponse2 = await store.fetch(new Request("https://moderation-store/config"));
   const config2 = (await configResponse2.json()) as any;
