@@ -16,7 +16,7 @@ class ModerationStoreInputError extends Error {}
 export class ModerationStoreDO implements DurableObject {
   private readonly sql: DurableObjectStorage["sql"];
 
-  constructor(ctx: DurableObjectState, env: Env) {
+  constructor(ctx: DurableObjectState, _env: Env) {
     this.sql = ctx.storage.sql;
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS global_blocked_emojis (
@@ -40,9 +40,9 @@ export class ModerationStoreDO implements DurableObject {
     this.seedDefaultsOnce();
 
     this.sql.exec(
-      "INSERT INTO app_config(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      "INSERT OR IGNORE INTO app_config(key, value) VALUES(?, ?)",
       "bot_user_id",
-      env.BOT_USER_ID
+      _env.BOT_USER_ID
     );
   }
 

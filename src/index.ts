@@ -126,7 +126,7 @@ async function handleReactionAdd(
   }
 
   // Ignore reactions from the bot itself
-  if (reaction.user_id === (blocklist.botUserId || env.BOT_USER_ID)) {
+  if (reaction.user_id === blocklist.botUserId) {
     return;
   }
 

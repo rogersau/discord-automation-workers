@@ -141,16 +141,42 @@ test("ModerationStoreDO does not reseed deleted defaults for legacy stores", asy
   assert.equal(config.emojis.includes(DEFAULT_BLOCKLIST.emojis[0]), false);
 });
 
-test("ModerationStoreDO refreshes bot user id from env", async () => {
-  const sql = createFakeSql({
-    appConfigEntries: [["bot_user_id", "stale-bot-id"]],
-  });
-  const ctx = { storage: { sql } } as unknown as DurableObjectState;
-  const store = new ModerationStoreDO(ctx, { BOT_USER_ID: "fresh-bot-id" } as never);
+test("ModerationStoreDO seeds bot user id from env only when missing", async () => {
+  const ctx = {
+    storage: { sql: createFakeSql() },
+  } as unknown as DurableObjectState;
+  const store = new ModerationStoreDO(ctx, { BOT_USER_ID: "seeded-bot-id" } as never);
   const response = await store.fetch(new Request("https://moderation-store/config"));
   const config = (await response.json()) as { botUserId: string };
 
-  assert.equal(config.botUserId, "fresh-bot-id");
+  assert.equal(config.botUserId, "seeded-bot-id");
+});
+
+test("ModerationStoreDO preserves stored bot user id across reconstruction", async () => {
+  const ctx = {
+    storage: { sql: createFakeSql() },
+  } as unknown as DurableObjectState;
+  const store = new ModerationStoreDO(ctx, { BOT_USER_ID: "env-bot-id" } as never);
+
+  const writeResponse = await store.fetch(
+    new Request("https://moderation-store/app-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "bot_user_id", value: "stored-bot-id" }),
+    })
+  );
+  assert.equal(writeResponse.status, 200);
+
+  const rehydratedStore = new ModerationStoreDO(
+    ctx,
+    { BOT_USER_ID: "fresh-env-bot-id" } as never
+  );
+  const response = await rehydratedStore.fetch(
+    new Request("https://moderation-store/config")
+  );
+  const config = (await response.json()) as { botUserId: string };
+
+  assert.equal(config.botUserId, "stored-bot-id");
 });
 
 test("ModerationStoreDO maps invalid input to 400 and storage faults to 500", async () => {
@@ -451,6 +477,79 @@ test("worker ignores bot reactions using the moderation store bot user id", asyn
     assert.equal(response.status, 200);
     assert.equal(deleteCalls.length, 0);
   } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("worker does not fall back to env bot user id when store bot user id is empty", async () => {
+  const timestamp = "1700000003";
+  const payload = {
+    t: "MESSAGE_REACTION_ADD",
+    s: 1,
+    op: 0,
+    d: {
+      channel_id: "channel-1",
+      message_id: "message-1",
+      guild_id: "guild-1",
+      emoji: { id: null, name: "✅", animated: false },
+      user_id: "env-bot-id",
+    },
+  };
+  const body = JSON.stringify(payload);
+  const signedRequest = await signDiscordRequest(body, timestamp);
+  const deleteCalls: Array<{ input: string; method: string | undefined }> = [];
+  const originalFetch = globalThis.fetch;
+  const originalConsoleLog = console.log;
+
+  globalThis.fetch = async (input, init) => {
+    deleteCalls.push({
+      input: String(input),
+      method: init?.method,
+    });
+    return new Response(null, { status: 204 });
+  };
+  console.log = () => {};
+
+  try {
+    const response = await worker.fetch(
+      new Request("https://worker.example", {
+        method: "POST",
+        headers: {
+          "x-signature-ed25519": signedRequest.signature,
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      }),
+      {
+        BLOCKLIST_KV: {} as never,
+        DISCORD_BOT_TOKEN: "bot-token",
+        DISCORD_PUBLIC_KEY: signedRequest.publicKey,
+        BOT_USER_ID: "env-bot-id",
+        MODERATION_STORE_DO: {
+          idFromName() {
+            return "store-id" as never;
+          },
+          get() {
+            return {
+              fetch: async () =>
+                Response.json({
+                  emojis: ["✅"],
+                  guilds: {},
+                  botUserId: "",
+                }),
+            };
+          },
+        } as never,
+      },
+      {} as ExecutionContext
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(deleteCalls.length, 1);
+    assert.equal(deleteCalls[0]?.method, "DELETE");
+    assert.match(deleteCalls[0]?.input ?? "", /\/reactions\/%E2%9C%85\/env-bot-id$/);
+  } finally {
+    console.log = originalConsoleLog;
     globalThis.fetch = originalFetch;
   }
 });
