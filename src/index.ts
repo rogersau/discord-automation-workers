@@ -11,7 +11,7 @@ import {
   extractCommandInvocation,
   hasGuildAdminPermission,
 } from "./discord-interactions";
-import { verifyDiscordSignature } from "./discord";
+import { syncApplicationCommands, verifyDiscordSignature } from "./discord";
 import type { Env } from "./env";
 import { getModerationStoreStub } from "./reaction-moderation";
 
@@ -60,7 +60,7 @@ export default {
       return;
     }
 
-    ctx.waitUntil(startGatewaySession(env));
+    ctx.waitUntil(bootstrapGatewaySession(env));
   },
 };
 
@@ -106,7 +106,7 @@ async function handleGatewayAdminRequest(
   }
 
   if (request.method === "POST" && url.pathname === "/admin/gateway/start") {
-    return startGatewaySession(env);
+    return bootstrapGatewaySession(env);
   }
 
   return new Response("Method not allowed", { status: 405 });
@@ -116,6 +116,21 @@ function startGatewaySession(env: Env): Promise<Response> {
   return getGatewaySessionStub(env).fetch("https://gateway-session/start", {
     method: "POST",
   });
+}
+
+async function bootstrapGatewaySession(env: Env): Promise<Response> {
+  if (env.DISCORD_APPLICATION_ID) {
+    try {
+      await syncApplicationCommands(
+        env.DISCORD_APPLICATION_ID,
+        env.DISCORD_BOT_TOKEN
+      );
+    } catch (error) {
+      console.error("Failed to sync slash commands during bootstrap", error);
+    }
+  }
+
+  return startGatewaySession(env);
 }
 
 function getGatewaySessionStub(env: Env): DurableObjectStub {

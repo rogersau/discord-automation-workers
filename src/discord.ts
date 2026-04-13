@@ -1,5 +1,6 @@
 // Discord API helpers
 
+import { SLASH_COMMAND_DEFINITIONS } from "./discord-commands";
 import type { DiscordReaction } from "./types";
 
 const DISCORD_API = "https://discord.com/api/v10";
@@ -27,6 +28,28 @@ export async function verifyDiscordSignature(
     );
   } catch {
     return false;
+  }
+}
+
+export async function syncApplicationCommands(
+  applicationId: string,
+  botToken: string
+): Promise<void> {
+  const response = await fetch(
+    `${DISCORD_API}/applications/${applicationId}/commands`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(SLASH_COMMAND_DEFINITIONS),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.text().catch(() => "Unknown error");
+    throw new Error(`Failed to sync application commands: ${response.status} ${error}`);
   }
 }
 
