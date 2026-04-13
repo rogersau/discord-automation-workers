@@ -4,7 +4,10 @@ import {
   buildIdentifyPayload,
   buildResumePayload,
   nextBackoffMillis,
+  shouldHandleDispatch,
 } from "../gateway";
+import { moderateReactionAdd } from "../reaction-moderation";
+import type { DiscordReaction } from "../types";
 
 const DEFAULT_GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
 
@@ -143,6 +146,11 @@ export class GatewaySessionDO implements DurableObject {
       }
 
       if (payload.op !== 0) {
+        return;
+      }
+
+      if (shouldHandleDispatch({ op: payload.op, t: payload.t ?? null })) {
+        await moderateReactionAdd(payload.d as DiscordReaction | null, this.env);
         return;
       }
 

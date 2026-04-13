@@ -133,6 +133,60 @@ test("GatewaySessionDO records malformed gateway messages instead of crashing", 
   }
 });
 
+test("GatewaySessionDO moderates blocked reaction dispatch events", async () => {
+  const { state } = createGatewayState();
+  const { restore, sockets } = installFakeWebSocket();
+  const storeFetches: string[] = [];
+  const deleteCalls: Array<{ input: string; method: string | undefined }> = [];
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async (input, init) => {
+    deleteCalls.push({
+      input: String(input),
+      method: init?.method,
+    });
+    return new Response(null, { status: 204 });
+  };
+
+  try {
+    const gateway = new GatewaySessionDO(
+      state,
+      createGatewayEnv({
+        moderationStoreFetch(input) {
+          storeFetches.push(String(input));
+          return Response.json({
+            emojis: ["✅"],
+            guilds: {},
+            botUserId: "bot-1",
+          });
+        },
+      })
+    );
+    await gateway.fetch(new Request("https://gateway-session/start", { method: "POST" }));
+
+    await sockets[0]?.emitMessage({
+      op: 0,
+      t: "MESSAGE_REACTION_ADD",
+      s: 5,
+      d: {
+        channel_id: "channel-1",
+        message_id: "message-1",
+        guild_id: "guild-1",
+        emoji: { id: null, name: "✅", animated: false },
+        user_id: "user-1",
+      },
+    });
+
+    assert.deepEqual(storeFetches, ["https://moderation-store/config"]);
+    assert.equal(deleteCalls.length, 1);
+    assert.equal(deleteCalls[0]?.method, "DELETE");
+    assert.match(deleteCalls[0]?.input ?? "", /\/reactions\/%E2%9C%85\/user-1$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restore();
+  }
+});
+
 test("GatewaySessionDO resumes persisted sessions after HELLO", async () => {
   const clock = mockDateNow(5_000);
   const { state, alarms } = createGatewayState({
@@ -424,6 +478,39 @@ function createGatewayState(initialValues?: Record<string, string>) {
       },
     } as unknown as DurableObjectState,
   };
+}
+
+function createGatewayEnv(options?: {
+  moderationStoreFetch?: (input: Request | string | URL) => Response;
+}) {
+  return {
+    DISCORD_BOT_TOKEN: "bot-token",
+    DISCORD_PUBLIC_KEY: "public-key",
+    BOT_USER_ID: "bot-user-id",
+    ADMIN_AUTH_SECRET: undefined,
+    GATEWAY_SESSION_DO: {
+      idFromName() {
+        return "gateway-id" as never;
+      },
+      get() {
+        return {
+          fetch: async () => Response.json({ status: "idle" }),
+        };
+      },
+    } as never,
+    MODERATION_STORE_DO: {
+      idFromName() {
+        return "moderation-store-id" as never;
+      },
+      get() {
+        return {
+          fetch: async (input: Request | string | URL) =>
+            options?.moderationStoreFetch?.(input) ??
+            Response.json({ emojis: [], guilds: {}, botUserId: "" }),
+        };
+      },
+    } as never,
+  } as never;
 }
 
 function installFakeWebSocket() {

@@ -1,33 +1,16 @@
 /**
  * Discord Reaction Moderator - Cloudflare Worker
  *
- * Receives Discord webhook events for message reactions and removes
- * reactions that match the configured blocklist.
- *
- * Setup:
- * 1. Create a Discord application and bot at https://discord.com/developers
- * 2. Enable Message Content Intent and Server Member Intent
- * 3. Add a webhook to your bot's settings
- * 4. Point the webhook to this worker's URL (e.g., https://your-worker.your-subdomain.workers.dev)
- * 5. Configure wrangler secrets:
- *    wrangler secret put DISCORD_BOT_TOKEN
- *    wrangler secret put DISCORD_PUBLIC_KEY
- * 6. Update wrangler.toml with your KV namespace ID and bot user ID
+ * Public entry point for health checks, admin APIs, scheduled gateway bootstrap,
+ * and the legacy signed HTTP reaction ingress path.
  */
 
-import { verifyDiscordSignature, deleteReaction } from "./discord";
-import {
-  getBlocklistFromStore,
-  isEmojiBlocked,
-  normalizeEmoji,
-} from "./blocklist";
+import { verifyDiscordSignature } from "./discord";
 import { GatewaySessionDO } from "./durable-objects/gateway-session";
 import { ModerationStoreDO } from "./durable-objects/moderation-store";
 import type { Env } from "./env";
-import type {
-  DiscordWebhookPayload,
-  DiscordReaction,
-} from "./types";
+import { getModerationStoreStub, moderateReactionAdd } from "./reaction-moderation";
+import type { DiscordWebhookPayload } from "./types";
 
 export { GatewaySessionDO, ModerationStoreDO };
 
@@ -88,74 +71,25 @@ export default {
 
     // Handle reaction events
     if (payload.t === "MESSAGE_REACTION_ADD") {
-      await handleReactionAdd(payload.d, env);
+      await moderateReactionAdd(payload.d, env);
     }
 
     // Discord expects a 200 response quickly to acknowledge receipt
     return new Response("", { status: 200 });
   },
+
+  scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext
+  ): void {
+    if (!env.DISCORD_BOT_TOKEN) {
+      return;
+    }
+
+    ctx.waitUntil(startGatewaySession(env));
+  },
 };
-
-/**
- * Handle a reaction add event.
- */
-async function handleReactionAdd(
-  reaction: DiscordReaction | null,
-  env: Env
-): Promise<void> {
-  if (!reaction) return;
-
-  const emojiName = normalizeEmoji(reaction.emoji.name);
-
-  // Build the emoji identifier for comparison
-  let emojiId: string;
-  if (reaction.emoji.id && reaction.emoji.name) {
-    // Custom emoji: name:id
-    emojiId = `${reaction.emoji.name}:${reaction.emoji.id}`;
-  } else if (emojiName) {
-    emojiId = emojiName;
-  } else {
-    return;
-  }
-
-  // Check if this emoji is blocked
-  let blocklist;
-  try {
-    blocklist = await getBlocklistFromStore(() =>
-      getModerationStoreStub(env).fetch("https://moderation-store/config")
-    );
-  } catch (error) {
-    console.error("Failed to load moderation config", error);
-    return;
-  }
-
-  // Ignore reactions from the bot itself
-  if (reaction.user_id === blocklist.botUserId) {
-    return;
-  }
-
-  if (!isEmojiBlocked(emojiId, blocklist, reaction.guild_id)) {
-    return;  // Not blocked, ignore
-  }
-
-  // Delete the reaction
-  try {
-    await deleteReaction(
-      reaction.channel_id,
-      reaction.message_id,
-      reaction.emoji,
-      reaction.user_id,
-      env.DISCORD_BOT_TOKEN
-    );
-
-    console.log(
-      `Removed reaction ${emojiId} from message ${reaction.message_id} in channel ${reaction.channel_id}`
-    );
-  } catch (err) {
-    console.error(`Failed to remove reaction:`, err);
-    // Don't throw - Discord expects 200 quickly
-  }
-}
 
 /**
  * Admin endpoint for managing the blocklist.
@@ -183,12 +117,6 @@ async function handleAdminRequest(request: Request, env: Env): Promise<Response>
 
   return new Response("Method not allowed", { status: 405 });
 }
-
-function getModerationStoreStub(env: Env): DurableObjectStub {
-  const storeId = env.MODERATION_STORE_DO.idFromName("moderation-store");
-  return env.MODERATION_STORE_DO.get(storeId);
-}
-
 async function handleGatewayAdminRequest(
   request: Request,
   env: Env
@@ -205,10 +133,16 @@ async function handleGatewayAdminRequest(
   }
 
   if (request.method === "POST" && url.pathname === "/admin/gateway/start") {
-    return gatewayStub.fetch("https://gateway-session/start", { method: "POST" });
+    return startGatewaySession(env);
   }
 
   return new Response("Method not allowed", { status: 405 });
+}
+
+function startGatewaySession(env: Env): Promise<Response> {
+  return getGatewaySessionStub(env).fetch("https://gateway-session/start", {
+    method: "POST",
+  });
 }
 
 function getGatewaySessionStub(env: Env): DurableObjectStub {

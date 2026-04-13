@@ -46,7 +46,7 @@ export interface GlobalEmojiMutation {
   emoji: string;
 }
 
-// Blocklist stored in KV
+// Effective blocklist config materialized from the moderation store.
 export interface BlocklistConfig {
   emojis: string[];
   guilds: {

@@ -75,6 +75,45 @@ test("worker protects gateway admin routes with ADMIN_AUTH_SECRET", async () => 
   assert.equal(gatewayCalls, 0);
 });
 
+test("worker scheduled handler bootstraps the gateway session durable object", async () => {
+  const gatewayFetches: Array<{ input: string; method: string }> = [];
+  const waitUntils: Promise<unknown>[] = [];
+  const scheduledWorker = worker as {
+    scheduled?: (
+      controller: ScheduledController,
+      env: never,
+      ctx: ExecutionContext
+    ) => void;
+  };
+
+  scheduledWorker.scheduled?.(
+    {} as ScheduledController,
+    createEnv({
+      gatewayFetch(input, init) {
+        gatewayFetches.push({
+          input: String(input),
+          method: init?.method ?? "GET",
+        });
+        return Response.json({ status: "connecting" });
+      },
+    }),
+    {
+      waitUntil(promise) {
+        waitUntils.push(promise);
+      },
+    } as ExecutionContext
+  );
+
+  await Promise.all(waitUntils);
+
+  assert.deepEqual(gatewayFetches, [
+    {
+      input: "https://gateway-session/start",
+      method: "POST",
+    },
+  ]);
+});
+
 function createEnv(options?: {
   ADMIN_AUTH_SECRET?: string;
   gatewayFetch?: (input: Request | string | URL, init?: RequestInit) => Response;

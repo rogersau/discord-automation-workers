@@ -1,4 +1,4 @@
-// Blocklist management via Cloudflare KV
+// Blocklist materialization helpers plus legacy KV compatibility utilities.
 
 import type {
   AppConfigRow,
@@ -78,7 +78,7 @@ export async function getBlocklistFromStore(
 }
 
 /**
- * Get the blocklist config from KV, or return defaults if not set.
+ * Legacy KV helper kept for compatibility with older workflows.
  */
 export async function getBlocklist(
   kv: KVNamespace
@@ -95,7 +95,7 @@ export async function getBlocklist(
 }
 
 /**
- * Update the blocklist config in KV.
+ * Legacy KV helper kept for compatibility with older workflows.
  */
 export async function setBlocklist(
   kv: KVNamespace,

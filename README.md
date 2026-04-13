@@ -1,190 +1,192 @@
 # Discord Reaction Moderator
 
-A Cloudflare Worker that applies emoji reaction moderation logic for forwarded Discord reaction events.
+A Cloudflare-first Discord reaction moderator built on **SQLite-backed Durable Objects**. The Worker provisions its moderation store and gateway session on deploy, keeps the Discord Gateway connection inside Cloudflare, and stays free-tier-compatible.
 
-## Features
+## What this deploy gives you
 
-- Blocks specified emoji reactions globally or per-guild
-- Easy emoji list management via admin API (no redeploys needed)
-- Discord request verification for signed HTTP requests (Ed25519)
-- Free tier friendly (Cloudflare Workers generous free plan)
+- **SQLite Durable Object moderation store** for blocklist state
+- **Gateway session Durable Object** that connects to Discord from Cloudflare
+- **Automatic gateway bootstrap** on a scheduled trigger after deploy
+- **Admin APIs** for blocklist reads/writes and gateway status/start
+- **No KV namespace setup** and no external reaction relay required
+
+The only required post-deploy setup is adding your Discord token and any bot-specific identifiers you do not want committed.
+
+## Architecture
+
+- `ModerationStoreDO` stores blocked emojis and app config in SQLite.
+- `GatewaySessionDO` maintains the Discord Gateway connection, resumes sessions, and applies moderation to `MESSAGE_REACTION_ADD` events.
+- The public Worker exposes `/health`, `/admin/blocklist`, `/admin/gateway/status`, and `/admin/gateway/start`.
 
 ## Prerequisites
 
 - [Node.js 20+](https://nodejs.org/)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
-- A Discord application with a bot ([Discord Developer Portal](https://discord.com/developers))
+- A Discord application with a bot token
 
 ## Setup
 
-### 1. Create a Discord Application and Bot
-
-1. Go to the [Discord Developer Portal](https://discord.com/developers)
-2. Create a new Application
-3. Go to **Bot** and create a bot token
-4. Enable these **Privileged Gateway Intents**:
-   - **Message Content Intent** (required for reading message content)
-   - **Server Member Intent** (for guild-specific settings)
-5. Copy the bot token (you'll need it for `DISCORD_BOT_TOKEN`)
-
-### 2. Create the KV Namespace
+### 1. Install dependencies
 
 ```bash
-cd discord-reaction-moderator
 npm install
-wrangler kv:namespace create BLOCKLIST_KV
 ```
 
-Copy the `id` output and paste it into `wrangler.toml` under `[[kv_namespaces]]`.
+### 2. Create a Discord bot
 
-For preview/development:
-```bash
-wrangler kv:namespace create --env preview BLOCKLIST_KV
+1. Go to the [Discord Developer Portal](https://discord.com/developers).
+2. Create an application and a bot user.
+3. Copy the bot token for `DISCORD_BOT_TOKEN`.
+4. Copy the bot user ID for `BOT_USER_ID`.
+5. Invite the bot with at least the **Manage Messages** permission.
+
+The gateway session requests the `GUILDS` and `GUILD_MESSAGE_REACTIONS` intents. No privileged intents are required for the current moderation flow.
+
+### 3. Configure Wrangler variables and secrets
+
+Set `BOT_USER_ID` in `wrangler.toml`:
+
+```toml
+[vars]
+BOT_USER_ID = "123456789012345678"
 ```
 
-### 3. Configure Secrets
+Then add the runtime secrets:
 
 ```bash
-# Bot token from Discord Developer Portal
 wrangler secret put DISCORD_BOT_TOKEN
 
-# Public key from Discord Developer Portal (General Information page)
+# Optional unless you still use the signed HTTP ingress compatibility path.
 wrangler secret put DISCORD_PUBLIC_KEY
 
-# Optional: protect /admin/blocklist with a bearer token
+# Optional: require bearer auth for admin routes.
 wrangler secret put ADMIN_AUTH_SECRET
 ```
 
-### 4. Set Your Bot User ID
-
-In `wrangler.toml`, set `BOT_USER_ID` to your bot's user ID (found in Discord developer mode under the bot's profile).
-
-### 5. Forward reaction events to the Worker
-
-1. In Discord Developer Portal, go to your application
-2. Go to **OAuth2** → **OAuth2 URL Generator**
-3. Check the `bot` scope
-4. For permissions, check:
-   - `Manage Messages`
-5. Use the generated URL to add the bot to your server
-6. Run a Gateway-capable bot or relay that listens for `MESSAGE_REACTION_ADD` events and POSTs them to this Worker.
-
-> Discord does **not** deliver `MESSAGE_REACTION_ADD` over standard webhooks or the Interactions Endpoint URL. Reaction events come from the Gateway API, so this repository needs a relay/bot process to forward those events into the Worker.
-
-### 6. Deploy
+### 4. Deploy
 
 ```bash
 npm run deploy
 ```
 
-Copy the worker URL (e.g., `https://discord-reaction-moderator.your-subdomain.workers.dev`).
+Deploy provisions:
 
-### 7. Point your relay at the Worker
+- `ModerationStoreDO`
+- `GatewaySessionDO`
+- SQLite migrations for both Durable Objects
+- a five-minute cron trigger that bootstraps the gateway session automatically
 
-Configure your Gateway relay to POST events to:
+### 5. Verify gateway startup
+
+After the bot token is present, the scheduled bootstrap will start the gateway session automatically within five minutes.
+
+To check status:
+
+```bash
+curl https://your-worker-url.workers.dev/admin/gateway/status
 ```
-https://your-worker-url.discord-reaction-moderator.workers.dev
+
+To force an immediate start instead of waiting for the next scheduled bootstrap:
+
+```bash
+curl -X POST https://your-worker-url.workers.dev/admin/gateway/start
 ```
 
-## Managing the Blocklist
+If `ADMIN_AUTH_SECRET` is configured, include it as a bearer token on admin requests:
 
-### View current blocklist
+```bash
+curl https://your-worker-url.workers.dev/admin/gateway/status \
+  -H "Authorization: Bearer $ADMIN_AUTH_SECRET"
+```
+
+## Managing the blocklist
+
+### View the current blocklist
 
 ```bash
 curl https://your-worker-url.workers.dev/admin/blocklist
 ```
 
-If you configured `ADMIN_AUTH_SECRET`, include it as a bearer token:
-
-```bash
-curl https://your-worker-url.workers.dev/admin/blocklist \
-  -H "Authorization: Bearer $ADMIN_AUTH_SECRET"
-```
-
-### Add an emoji to block
+### Add a blocked emoji
 
 ```bash
 curl -X POST https://your-worker-url.workers.dev/admin/blocklist \
   -H "Content-Type: application/json" \
-  -d '{"emoji": "🏳️‍🌈", "action": "add"}'
+  -d '{"emoji":"✅","action":"add"}'
 ```
 
-If you prefer managing the deployed blocklist directly in Cloudflare KV with Wrangler, update the `blocklist_config` key:
+### Remove a blocked emoji
 
 ```bash
-npx wrangler kv:key get blocklist_config --binding=BLOCKLIST_KV --text
+curl -X POST https://your-worker-url.workers.dev/admin/blocklist \
+  -H "Content-Type: application/json" \
+  -d '{"emoji":"✅","action":"remove"}'
 ```
 
-Save the updated config to a file such as `blocklist_config.json`, then write it back to KV:
-
-```json
-{
-  "emojis": ["🏳️‍🌈", "🏳️‍⚧️", "🏳️", "🟤", "🏴", "🏴‍☠️", "☣️", "🔞", "🍎", "✅"],
-  "guilds": {},
-  "botUserId": ""
-}
-```
-
-```bash
-npx wrangler kv:key put blocklist_config \
-  --binding=BLOCKLIST_KV \
-  --path ./blocklist_config.json
-```
-
-If you use the admin API after setting `ADMIN_AUTH_SECRET`, send the same bearer token in the `Authorization` header:
+If admin auth is enabled:
 
 ```bash
 curl -X POST https://your-worker-url.workers.dev/admin/blocklist \
   -H "Authorization: Bearer $ADMIN_AUTH_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"emoji": "✅", "action": "add"}'
+  -d '{"emoji":"✅","action":"add"}'
 ```
-
-### Remove an emoji from block
-
-```bash
-curl -X POST https://your-worker-url.workers.dev/admin/blocklist \
-  -H "Content-Type: application/json" \
-  -d '{"emoji": "🏳️‍🌈", "action": "remove"}'
-```
-
-### Default Blocked Emojis
-
-These emojis are blocked by default:
-- 🏳️‍🌈 Rainbow flag
-- 🏳️‍⚧️ Trans flag
-- 🏳️ White flag
-- 🏴 Black flag
-- 🏴‍☠️ Pirate flag
-- ☣️ Biohazard
-- 🔞 NSFW
 
 ## Admin API
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/admin/blocklist` | View current blocklist config |
-| POST | `/admin/blocklist` | Add/remove emojis |
+| --- | --- | --- |
+| GET | `/health` | Basic health check |
+| GET | `/admin/blocklist` | Return the effective moderation config |
+| POST / PUT | `/admin/blocklist` | Add or remove blocked emojis |
+| GET | `/admin/gateway/status` | Return current gateway session state |
+| POST | `/admin/gateway/start` | Force an immediate gateway bootstrap |
 
-If `ADMIN_AUTH_SECRET` is configured with `wrangler secret put ADMIN_AUTH_SECRET`, the admin endpoint requires `Authorization: Bearer <secret>`. If the secret is not configured, the admin endpoint remains open.
+If `ADMIN_AUTH_SECRET` is configured, all `/admin/*` routes require `Authorization: Bearer <secret>`.
 
-## Security Notes
+## Default blocked emojis
 
-1. **Admin endpoint** — Set `ADMIN_AUTH_SECRET` to require a bearer token on `/admin/blocklist`.
-2. **Discord signature verification** — Always verifies incoming requests against Discord's public key.
-3. **Bot self-ignore** — The bot ignores its own reactions (configured via `BOT_USER_ID`).
+These emojis are seeded into a brand-new moderation store:
 
-## Project Structure
+- 🏳️‍🌈
+- 🏳️‍⚧️
+- 🏳️
+- 🟤
+- 🏴
+- 🏴‍☠️
+- ☣️
+- 🔞
+- 🍎
 
+## Compatibility note
+
+The Worker still accepts the older signed HTTP reaction-ingress path for compatibility. If you already have a relay posting `MESSAGE_REACTION_ADD` events into the Worker, it will continue to work. The preferred deployment path is the Cloudflare-native gateway session, which no longer depends on an external relay.
+
+## Local validation
+
+```bash
+npm test
+npm run typecheck
+npx wrangler deploy --dry-run
 ```
+
+## Project structure
+
+```text
 ├── src/
-│   ├── index.ts      # Main worker entry point
-│   ├── types.ts      # TypeScript type definitions
-│   ├── discord.ts    # Discord API helpers
-│   └── blocklist.ts  # Blocklist management via KV
-├── wrangler.toml     # Cloudflare Workers config
+│   ├── durable-objects/
+│   │   ├── gateway-session.ts
+│   │   └── moderation-store.ts
+│   ├── blocklist.ts
+│   ├── discord.ts
+│   ├── env.ts
+│   ├── gateway.ts
+│   ├── index.ts
+│   ├── reaction-moderation.ts
+│   └── types.ts
+├── test/
+├── wrangler.toml
 ├── package.json
-├── tsconfig.json
 └── README.md
 ```
 
