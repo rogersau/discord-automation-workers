@@ -96,13 +96,40 @@ test("worker rejects slash commands from members without guild admin permissions
 
 test("worker forwards valid guild admin add and remove slash commands to the moderation store", async () => {
   const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+  const blockedEmojis = new Set<string>();
   const env = createEnv({
     moderationFetch(input, init) {
+      const method = init?.method ?? "GET";
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
       storeCalls.push({
         input: String(input),
-        method: init?.method ?? "GET",
-        body: init?.body ? JSON.parse(String(init.body)) : null,
+        method,
+        body,
       });
+
+      if (method === "GET") {
+        return Response.json({
+          emojis: [],
+          guilds: blockedEmojis.size
+            ? {
+                "guild-123": {
+                  enabled: true,
+                  emojis: [...blockedEmojis],
+                },
+              }
+            : {},
+          botUserId: "",
+        });
+      }
+
+      if (body && typeof body === "object" && "action" in body && "emoji" in body) {
+        if (body.action === "add") {
+          blockedEmojis.add(String(body.emoji));
+        } else if (body.action === "remove") {
+          blockedEmojis.delete(String(body.emoji));
+        }
+      }
+
       return Response.json({ ok: true });
     },
   });
@@ -144,14 +171,119 @@ test("worker forwards valid guild admin add and remove slash commands to the mod
   );
   assert.deepEqual(storeCalls, [
     {
+      input: "https://moderation-store/config",
+      method: "GET",
+      body: null,
+    },
+    {
       input: "https://moderation-store/guild-emoji",
       method: "POST",
       body: { guildId: "guild-123", emoji: "✅", action: "add" },
     },
     {
+      input: "https://moderation-store/config",
+      method: "GET",
+      body: null,
+    },
+    {
       input: "https://moderation-store/guild-emoji",
       method: "POST",
       body: { guildId: "guild-123", emoji: "✅", action: "remove" },
+    },
+  ]);
+});
+
+test("worker returns duplicate add feedback without mutating the store", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+  const { publicKeyHex, request } = await createSignedInteractionRequest(
+    createApplicationCommand({
+      guildId: "guild-123",
+      permissions: "8",
+      subcommand: "add",
+      emoji: "✅",
+    })
+  );
+
+  const response = await worker.fetch(
+    request,
+    createEnv({
+      DISCORD_PUBLIC_KEY: publicKeyHex,
+      moderationFetch(input, init) {
+        storeCalls.push({
+          input: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return Response.json({
+          emojis: [],
+          guilds: {
+            "guild-123": {
+              enabled: true,
+              emojis: ["✅"],
+            },
+          },
+          botUserId: "",
+        });
+      },
+    }),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    await response.json(),
+    buildEphemeralMessage("✅ is already blocked in this server.")
+  );
+  assert.deepEqual(storeCalls, [
+    {
+      input: "https://moderation-store/config",
+      method: "GET",
+      body: null,
+    },
+  ]);
+});
+
+test("worker returns missing remove feedback without mutating the store", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+  const { publicKeyHex, request } = await createSignedInteractionRequest(
+    createApplicationCommand({
+      guildId: "guild-123",
+      permissions: "8",
+      subcommand: "remove",
+      emoji: "✅",
+    })
+  );
+
+  const response = await worker.fetch(
+    request,
+    createEnv({
+      DISCORD_PUBLIC_KEY: publicKeyHex,
+      moderationFetch(input, init) {
+        storeCalls.push({
+          input: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return Response.json({
+          emojis: [],
+          guilds: {},
+          botUserId: "",
+        });
+      },
+    }),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    await response.json(),
+    buildEphemeralMessage("✅ is not currently blocked in this server.")
+  );
+  assert.deepEqual(storeCalls, [
+    {
+      input: "https://moderation-store/config",
+      method: "GET",
+      body: null,
     },
   ]);
 });

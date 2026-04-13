@@ -6,6 +6,7 @@
 
 import { GatewaySessionDO } from "./durable-objects/gateway-session";
 import { ModerationStoreDO } from "./durable-objects/moderation-store";
+import { getBlocklistFromStore } from "./blocklist";
 import {
   buildEphemeralMessage,
   extractCommandInvocation,
@@ -229,9 +230,36 @@ async function handleApplicationCommand(
     return Response.json(buildEphemeralMessage("Unsupported command."));
   }
 
+  const storeStub = getModerationStoreStub(env);
+  let isAlreadyBlocked = false;
+  try {
+    const config = await getBlocklistFromStore(() =>
+      storeStub.fetch("https://moderation-store/config")
+    );
+    isAlreadyBlocked =
+      config.guilds?.[interaction.guild_id]?.emojis.includes(invocation.emoji) ?? false;
+  } catch (error) {
+    console.error("Failed to load moderation config", error);
+    return Response.json(
+      buildEphemeralMessage("Failed to update the server blocklist.")
+    );
+  }
+
+  if (invocation.subcommandName === "add" && isAlreadyBlocked) {
+    return Response.json(
+      buildEphemeralMessage(`${invocation.emoji} is already blocked in this server.`)
+    );
+  }
+
+  if (invocation.subcommandName === "remove" && !isAlreadyBlocked) {
+    return Response.json(
+      buildEphemeralMessage(`${invocation.emoji} is not currently blocked in this server.`)
+    );
+  }
+
   let storeResponse: Response;
   try {
-    storeResponse = await getModerationStoreStub(env).fetch(
+    storeResponse = await storeStub.fetch(
       "https://moderation-store/guild-emoji",
       {
         method: "POST",

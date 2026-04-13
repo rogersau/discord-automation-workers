@@ -153,14 +153,12 @@ export class ModerationStoreDO implements DurableObject {
   }
 
   private applyGuildEmojiMutation(body: { guildId: string; emoji: string; action: "add" | "remove"; }): BlocklistConfig {
-    // Ensure guild settings row exists
-    this.sql.exec(
-      "INSERT OR IGNORE INTO guild_settings(guild_id, moderation_enabled) VALUES(?, ?)",
-      body.guildId,
-      1
-    );
-
     if (body.action === "add") {
+      this.sql.exec(
+        "INSERT OR IGNORE INTO guild_settings(guild_id, moderation_enabled) VALUES(?, ?)",
+        body.guildId,
+        1
+      );
       this.sql.exec(
         "INSERT OR IGNORE INTO guild_blocked_emojis(guild_id, normalized_emoji) VALUES(?, ?)",
         body.guildId,

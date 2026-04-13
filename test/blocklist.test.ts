@@ -338,6 +338,43 @@ test("guild-scoped emoji add and remove", async () => {
   assert.deepEqual(config2, expectedAfterRemove);
 });
 
+test("guild-scoped remove from untouched guild does not create guild settings", async () => {
+  const sql = createFakeSql();
+  const ctx = { storage: { sql } } as unknown as DurableObjectState;
+  const env = { BOT_USER_ID: "bot-1" } as never;
+  const store = new ModerationStoreDO(ctx, env);
+
+  const removeResponse = await store.fetch(
+    new Request("https://moderation-store/guild-emoji", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guildId: "guild-untouched", emoji: "✅", action: "remove" }),
+    })
+  );
+
+  assert.equal(removeResponse.status, 200);
+  assert.deepEqual(
+    await removeResponse.json(),
+    buildBlocklistConfig(
+      DEFAULT_BLOCKLIST.emojis.map((e) => ({ normalized_emoji: e })),
+      [],
+      [],
+      [{ key: "bot_user_id", value: "bot-1" }]
+    )
+  );
+
+  const configResponse = await store.fetch(new Request("https://moderation-store/config"));
+  assert.deepEqual(
+    await configResponse.json(),
+    buildBlocklistConfig(
+      DEFAULT_BLOCKLIST.emojis.map((e) => ({ normalized_emoji: e })),
+      [],
+      [],
+      [{ key: "bot_user_id", value: "bot-1" }]
+    )
+  );
+});
+
 test("guild-scoped empty guild id is rejected", async () => {
   const sql = createFakeSql();
   const ctx = { storage: { sql } } as unknown as DurableObjectState;
