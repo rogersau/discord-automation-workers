@@ -355,6 +355,20 @@ test("guild-scoped empty guild id is rejected", async () => {
   assert.equal(response.status, 400);
 });
 
+// Focused test to verify the fake SQL distinguishes guild_settings from guild_blocked_emojis
+test("createFakeSql distinguishes guild tables", () => {
+  const sql = createFakeSql();
+
+  // Insert only into guild_blocked_emojis
+  sql.exec("INSERT OR IGNORE INTO guild_blocked_emojis(guild_id, normalized_emoji) VALUES(?, ?)", "guild-1", "✅");
+
+  const settingsResult = sql.exec("SELECT 1 FROM guild_settings LIMIT 1");
+  const blockedResult = sql.exec("SELECT 1 FROM guild_blocked_emojis LIMIT 1");
+
+  assert.deepEqual(settingsResult, []);
+  assert.deepEqual(blockedResult, [{ 1: 1 }]);
+});
+
 function createFakeSql(options?: {
   failOnDelete?: boolean;
   failOnSelectConfig?: boolean;
@@ -484,13 +498,13 @@ function createFakeSql(options?: {
         return globalBlockedEmojis.size > 0 ? [{ 1: 1 }] : [];
       }
 
-      if (
-        query === "SELECT 1 FROM guild_settings LIMIT 1" ||
-        query === "SELECT 1 FROM guild_blocked_emojis LIMIT 1"
-      ) {
-        const hasGuildSettings = guildSettings.size > 0;
+      if (query === "SELECT 1 FROM guild_settings LIMIT 1") {
+        return guildSettings.size > 0 ? [{ 1: 1 }] : [];
+      }
+
+      if (query === "SELECT 1 FROM guild_blocked_emojis LIMIT 1") {
         const hasGuildBlocked = Array.from(guildBlockedEmojis.values()).some((s) => s.size > 0);
-        return (hasGuildSettings || hasGuildBlocked) ? [{ 1: 1 }] : [];
+        return hasGuildBlocked ? [{ 1: 1 }] : [];
       }
 
       if (query === "SELECT 1 FROM app_config LIMIT 1") {
