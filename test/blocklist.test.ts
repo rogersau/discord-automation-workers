@@ -152,6 +152,21 @@ test("ModerationStoreDO seeds bot user id from env only when missing", async () 
   assert.equal(config.botUserId, "seeded-bot-id");
 });
 
+test("ModerationStoreDO does not seed bot user id from env for existing stores", async () => {
+  const ctx = {
+    storage: {
+      sql: createFakeSql({
+        globalBlockedEmojis: [DEFAULT_BLOCKLIST.emojis[0]],
+      }),
+    },
+  } as unknown as DurableObjectState;
+  const store = new ModerationStoreDO(ctx, { BOT_USER_ID: "seeded-bot-id" } as never);
+  const response = await store.fetch(new Request("https://moderation-store/config"));
+  const config = (await response.json()) as { botUserId: string };
+
+  assert.equal(config.botUserId, "");
+});
+
 test("ModerationStoreDO preserves stored bot user id across reconstruction", async () => {
   const ctx = {
     storage: { sql: createFakeSql() },

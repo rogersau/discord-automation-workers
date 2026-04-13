@@ -37,13 +37,17 @@ export class ModerationStoreDO implements DurableObject {
       );
     `);
 
+    const isBrandNewStore = !this.hasExistingState();
+
     this.seedDefaultsOnce();
 
-    this.sql.exec(
-      "INSERT OR IGNORE INTO app_config(key, value) VALUES(?, ?)",
-      "bot_user_id",
-      _env.BOT_USER_ID
-    );
+    if (isBrandNewStore) {
+      this.sql.exec(
+        "INSERT OR IGNORE INTO app_config(key, value) VALUES(?, ?)",
+        "bot_user_id",
+        _env.BOT_USER_ID
+      );
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
