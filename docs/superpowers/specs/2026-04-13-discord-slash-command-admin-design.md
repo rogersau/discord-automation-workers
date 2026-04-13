@@ -41,6 +41,8 @@ The Worker gains three command-related responsibilities:
 2. Handle slash command payloads and return interaction responses
 3. Sync the slash command schema with Discord when the application boots
 
+The interaction handler should be structured as a small command-routing layer rather than a single large conditional. Command definitions and command executors should be separated so future commands can be added by registering a new definition and handler pair instead of rewriting the whole endpoint.
+
 The Worker remains the public entry point for:
 
 - `/health`
@@ -94,6 +96,8 @@ The `emoji` option accepts either:
 - a custom emoji token such as `:party_blob:` or `party_blob:1234567890`
 
 The same normalization rules already used by moderation should be reused so command writes and moderation reads stay consistent.
+
+The command definition should be represented in a reusable structure that can later hold additional slash commands. Discord command sync should be driven from that structure so the first feature does not hard-code `blocklist` into the sync path.
 
 ### Authorization
 
@@ -167,6 +171,8 @@ Add:
 
 Keep existing admin routes unchanged. The slash command flow is a new Discord-native surface, not a replacement for the operator HTTP API.
 
+Internally, the interactions route should dispatch through a command router with focused handlers. The first handler set covers `blocklist add` and `blocklist remove`, but the routing model should remain open for future command families.
+
 ### Env Contract
 
 Add:
@@ -235,3 +241,4 @@ Repository validation remains:
 
 - This design intentionally keeps Discord command handling in the Worker and live moderation in `GatewaySessionDO`.
 - The deleted legacy compatibility ingress stays deleted; `/interactions` is a narrowly scoped Discord command endpoint with explicit signature verification and Discord interaction semantics.
+- Extensibility matters for this feature: new commands should be added by extending a command registry/router and command sync definitions, not by expanding a monolithic handler with unrelated logic.
