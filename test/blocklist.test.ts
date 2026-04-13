@@ -141,6 +141,18 @@ test("ModerationStoreDO does not reseed deleted defaults for legacy stores", asy
   assert.equal(config.emojis.includes(DEFAULT_BLOCKLIST.emojis[0]), false);
 });
 
+test("ModerationStoreDO refreshes bot user id from env", async () => {
+  const sql = createFakeSql({
+    appConfigEntries: [["bot_user_id", "stale-bot-id"]],
+  });
+  const ctx = { storage: { sql } } as unknown as DurableObjectState;
+  const store = new ModerationStoreDO(ctx, { BOT_USER_ID: "fresh-bot-id" } as never);
+  const response = await store.fetch(new Request("https://moderation-store/config"));
+  const config = (await response.json()) as { botUserId: string };
+
+  assert.equal(config.botUserId, "fresh-bot-id");
+});
+
 test("ModerationStoreDO maps invalid input to 400 and storage faults to 500", async () => {
   const ctx = {
     storage: { sql: createFakeSql() },
@@ -371,6 +383,74 @@ test("worker still acknowledges webhook when moderation store config fails", asy
     assert.equal(deleteCalls.length, 0);
   } finally {
     console.error = originalConsoleError;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("worker ignores bot reactions using the moderation store bot user id", async () => {
+  const timestamp = "1700000002";
+  const payload = {
+    t: "MESSAGE_REACTION_ADD",
+    s: 1,
+    op: 0,
+    d: {
+      channel_id: "channel-1",
+      message_id: "message-1",
+      guild_id: "guild-1",
+      emoji: { id: null, name: "✅", animated: false },
+      user_id: "bot-from-store",
+    },
+  };
+  const body = JSON.stringify(payload);
+  const signedRequest = await signDiscordRequest(body, timestamp);
+  const deleteCalls: Array<{ input: string; method: string | undefined }> = [];
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async (input, init) => {
+    deleteCalls.push({
+      input: String(input),
+      method: init?.method,
+    });
+    return new Response(null, { status: 204 });
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request("https://worker.example", {
+        method: "POST",
+        headers: {
+          "x-signature-ed25519": signedRequest.signature,
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      }),
+      {
+        BLOCKLIST_KV: {} as never,
+        DISCORD_BOT_TOKEN: "bot-token",
+        DISCORD_PUBLIC_KEY: signedRequest.publicKey,
+        BOT_USER_ID: "env-bot-id",
+        MODERATION_STORE_DO: {
+          idFromName() {
+            return "store-id" as never;
+          },
+          get() {
+            return {
+              fetch: async () =>
+                Response.json({
+                  emojis: ["✅"],
+                  guilds: {},
+                  botUserId: "bot-from-store",
+                }),
+            };
+          },
+        } as never,
+      },
+      {} as ExecutionContext
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(deleteCalls.length, 0);
+  } finally {
     globalThis.fetch = originalFetch;
   }
 });

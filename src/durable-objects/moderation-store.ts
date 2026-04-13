@@ -40,7 +40,7 @@ export class ModerationStoreDO implements DurableObject {
     this.seedDefaultsOnce();
 
     this.sql.exec(
-      "INSERT OR IGNORE INTO app_config(key, value) VALUES(?, ?)",
+      "INSERT INTO app_config(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       "bot_user_id",
       env.BOT_USER_ID
     );

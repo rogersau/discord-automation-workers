@@ -101,11 +101,6 @@ async function handleReactionAdd(
 ): Promise<void> {
   if (!reaction) return;
 
-  // Ignore reactions from the bot itself
-  if (reaction.user_id === env.BOT_USER_ID) {
-    return;
-  }
-
   const emojiName = normalizeEmoji(reaction.emoji.name);
 
   // Build the emoji identifier for comparison
@@ -127,6 +122,11 @@ async function handleReactionAdd(
     );
   } catch (error) {
     console.error("Failed to load moderation config", error);
+    return;
+  }
+
+  // Ignore reactions from the bot itself
+  if (reaction.user_id === (blocklist.botUserId || env.BOT_USER_ID)) {
     return;
   }
 
