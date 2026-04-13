@@ -485,7 +485,6 @@ function createGatewayEnv(options?: {
 }) {
   return {
     DISCORD_BOT_TOKEN: "bot-token",
-    DISCORD_PUBLIC_KEY: "public-key",
     BOT_USER_ID: "bot-user-id",
     ADMIN_AUTH_SECRET: undefined,
     GATEWAY_SESSION_DO: {

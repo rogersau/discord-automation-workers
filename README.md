@@ -56,9 +56,6 @@ Then add the runtime secrets:
 ```bash
 wrangler secret put DISCORD_BOT_TOKEN
 
-# Optional unless you still use the signed HTTP ingress compatibility path.
-wrangler secret put DISCORD_PUBLIC_KEY
-
 # Optional: require bearer auth for admin routes.
 wrangler secret put ADMIN_AUTH_SECRET
 ```
@@ -157,10 +154,6 @@ These emojis are seeded into a brand-new moderation store:
 - ☣️
 - 🔞
 - 🍎
-
-## Compatibility note
-
-The Worker still accepts the older signed HTTP reaction-ingress path for compatibility. If you already have a relay posting `MESSAGE_REACTION_ADD` events into the Worker, it will continue to work. The preferred deployment path is the Cloudflare-native gateway session, which no longer depends on an external relay.
 
 ## Local validation
 

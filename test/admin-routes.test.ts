@@ -114,13 +114,22 @@ test("worker scheduled handler bootstraps the gateway session durable object", a
   ]);
 });
 
+test("worker rejects the legacy signed HTTP reaction ingress path", async () => {
+  const response = await worker.fetch(
+    new Request("https://worker.example", { method: "POST", body: "{}" }),
+    createEnv(),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 404);
+});
+
 function createEnv(options?: {
   ADMIN_AUTH_SECRET?: string;
   gatewayFetch?: (input: Request | string | URL, init?: RequestInit) => Response;
 }) {
   return {
     DISCORD_BOT_TOKEN: "bot-token",
-    DISCORD_PUBLIC_KEY: "public-key",
     BOT_USER_ID: "bot-user-id",
     ADMIN_AUTH_SECRET: options?.ADMIN_AUTH_SECRET,
     MODERATION_STORE_DO: {

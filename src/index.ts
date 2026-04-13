@@ -1,16 +1,13 @@
 /**
  * Discord Reaction Moderator - Cloudflare Worker
  *
- * Public entry point for health checks, admin APIs, scheduled gateway bootstrap,
- * and the legacy signed HTTP reaction ingress path.
+ * Public entry point for health checks, admin APIs, and scheduled gateway bootstrap.
  */
 
-import { verifyDiscordSignature } from "./discord";
 import { GatewaySessionDO } from "./durable-objects/gateway-session";
 import { ModerationStoreDO } from "./durable-objects/moderation-store";
 import type { Env } from "./env";
-import { getModerationStoreStub, moderateReactionAdd } from "./reaction-moderation";
-import type { DiscordWebhookPayload } from "./types";
+import { getModerationStoreStub } from "./reaction-moderation";
 
 export { GatewaySessionDO, ModerationStoreDO };
 
@@ -39,43 +36,7 @@ export default {
       return handleGatewayAdminRequest(request, env);
     }
 
-    // Verify Discord webhook signature
-    const signature = request.headers.get("x-signature-ed25519") ?? "";
-    const timestamp = request.headers.get("x-signature-timestamp") ?? "";
-
-    if (!signature || !timestamp) {
-      return new Response("Missing signature headers", { status: 401 });
-    }
-
-    const body = await request.text();
-
-    const isValid = await verifyDiscordSignature(
-      body,
-      signature,
-      timestamp,
-      env.DISCORD_PUBLIC_KEY
-    );
-
-    if (!isValid) {
-      console.error("Invalid request signature");
-      return new Response("Invalid signature", { status: 401 });
-    }
-
-    // Parse the webhook payload
-    let payload: DiscordWebhookPayload;
-    try {
-      payload = JSON.parse(body);
-    } catch {
-      return new Response("Invalid JSON", { status: 400 });
-    }
-
-    // Handle reaction events
-    if (payload.t === "MESSAGE_REACTION_ADD") {
-      await moderateReactionAdd(payload.d, env);
-    }
-
-    // Discord expects a 200 response quickly to acknowledge receipt
-    return new Response("", { status: 200 });
+    return new Response("Not found", { status: 404 });
   },
 
   scheduled(

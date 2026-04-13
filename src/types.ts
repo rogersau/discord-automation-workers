@@ -14,13 +14,6 @@ export interface DiscordReaction {
   user_id: string;
 }
 
-export interface DiscordWebhookPayload {
-  t: string;
-  s: number;
-  op: number;
-  d: DiscordReaction | null;
-}
-
 export interface GlobalBlockedEmojiRow {
   normalized_emoji: string;
 }

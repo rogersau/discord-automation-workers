@@ -10,7 +10,6 @@ crons = ["*/5 * * * *"]
 
 # Discord Credentials (set as secrets, not here)
 # wrangler secret put DISCORD_BOT_TOKEN
-# wrangler secret put DISCORD_PUBLIC_KEY
 
 [[durable_objects.bindings]]
 name = "MODERATION_STORE_DO"
