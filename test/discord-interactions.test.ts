@@ -93,6 +93,23 @@ test("extractCommandInvocation rejects unknown commands and subcommands", () => 
   assert.equal(extractCommandInvocation(unknownCmd), null);
 });
 
+test("extractCommandInvocation rejects non-string emoji values", () => {
+  const nonStringEmoji = {
+    data: {
+      name: "blocklist",
+      options: [
+        {
+          name: "add",
+          type: 1,
+          options: [{ name: "emoji", value: { raw: "💀" } }],
+        },
+      ],
+    },
+  } as any;
+
+  assert.equal(extractCommandInvocation(nonStringEmoji), null);
+});
+
 test("SLASH_COMMAND_DEFINITIONS matches expected blocklist command tree", () => {
   const expected = [
     {

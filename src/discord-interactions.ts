@@ -38,7 +38,7 @@ export function extractCommandInvocation(invocation: any):
     ? sub.options.find((o: any) => o.name === "emoji")
     : undefined;
   const emoji = emojiOpt?.value;
-  if (!emoji) return null;
+  if (typeof emoji !== "string") return null;
 
   return { commandName: data.name, subcommandName: sub.name, emoji };
 }
