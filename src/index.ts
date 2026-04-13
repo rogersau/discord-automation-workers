@@ -6,6 +6,12 @@
 
 import { GatewaySessionDO } from "./durable-objects/gateway-session";
 import { ModerationStoreDO } from "./durable-objects/moderation-store";
+import {
+  buildEphemeralMessage,
+  extractCommandInvocation,
+  hasGuildAdminPermission,
+} from "./discord-interactions";
+import { verifyDiscordSignature } from "./discord";
 import type { Env } from "./env";
 import { getModerationStoreStub } from "./reaction-moderation";
 
@@ -34,6 +40,10 @@ export default {
       url.pathname === "/admin/gateway/start"
     ) {
       return handleGatewayAdminRequest(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/interactions") {
+      return handleInteractionRequest(request, env);
     }
 
     return new Response("Not found", { status: 404 });
@@ -118,4 +128,104 @@ function isAuthorizedAdminRequest(request: Request, env: Env): boolean {
 
   const authorization = request.headers.get("Authorization");
   return authorization === `Bearer ${env.ADMIN_AUTH_SECRET}`;
+}
+
+async function handleInteractionRequest(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const signature = request.headers.get("x-signature-ed25519");
+  const timestamp = request.headers.get("x-signature-timestamp");
+  const body = await request.text();
+
+  if (!signature || !timestamp) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const isValid = await verifyDiscordSignature(
+    env.DISCORD_PUBLIC_KEY,
+    timestamp,
+    body,
+    signature
+  );
+
+  if (!isValid) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  let interaction: any;
+  try {
+    interaction = JSON.parse(body);
+  } catch {
+    return new Response("Invalid JSON body", { status: 400 });
+  }
+
+  if (interaction?.type === 1) {
+    return Response.json({ type: 1 });
+  }
+
+  if (interaction?.type === 2) {
+    return handleApplicationCommand(interaction, env);
+  }
+
+  return Response.json(buildEphemeralMessage("Unsupported interaction type."));
+}
+
+async function handleApplicationCommand(
+  interaction: any,
+  env: Env
+): Promise<Response> {
+  if (typeof interaction?.guild_id !== "string" || interaction.guild_id.length === 0) {
+    return Response.json(
+      buildEphemeralMessage("This command can only be used inside a server.")
+    );
+  }
+
+  if (!hasGuildAdminPermission(interaction?.member?.permissions ?? "")) {
+    return Response.json(
+      buildEphemeralMessage(
+        "You need Administrator or Manage Guild permissions to use this command."
+      )
+    );
+  }
+
+  const invocation = extractCommandInvocation(interaction);
+  if (!invocation) {
+    return Response.json(buildEphemeralMessage("Unsupported command."));
+  }
+
+  let storeResponse: Response;
+  try {
+    storeResponse = await getModerationStoreStub(env).fetch(
+      "https://moderation-store/guild-emoji",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guildId: interaction.guild_id,
+          emoji: invocation.emoji,
+          action: invocation.subcommandName,
+        }),
+      }
+    );
+  } catch (error) {
+    console.error("Guild emoji mutation failed", error);
+    return Response.json(
+      buildEphemeralMessage("Failed to update the server blocklist.")
+    );
+  }
+
+  if (!storeResponse.ok) {
+    console.error("Guild emoji mutation failed", await storeResponse.text());
+    return Response.json(
+      buildEphemeralMessage("Failed to update the server blocklist.")
+    );
+  }
+
+  const actionMessage =
+    invocation.subcommandName === "add"
+      ? `Blocked ${invocation.emoji} in this server.`
+      : `Unblocked ${invocation.emoji} in this server.`;
+
+  return Response.json(buildEphemeralMessage(actionMessage));
 }
