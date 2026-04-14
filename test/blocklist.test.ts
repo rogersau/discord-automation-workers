@@ -455,6 +455,89 @@ test("ModerationStoreDO upserts and lists active timed roles by guild", async ()
   assert.deepEqual(alarms, [1_700_604_800_000]);
 });
 
+test("ModerationStoreDO replaces timed role expiry when upserting the same assignment", async () => {
+  const originalNow = Date.now;
+  const alarms: number[] = [];
+  const sql = createFakeSql();
+  const ctx = {
+    storage: {
+      sql,
+      setAlarm(time: number) {
+        alarms.push(time);
+        return Promise.resolve();
+      },
+    },
+  } as unknown as DurableObjectState;
+
+  const store = new ModerationStoreDO(
+    ctx,
+    { BOT_USER_ID: "bot-1", DISCORD_BOT_TOKEN: "token" } as never
+  );
+
+  try {
+    Date.now = () => 1_700_000_000_000;
+    await store.fetch(
+      new Request("https://moderation-store/timed-role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guildId: "guild-1",
+          userId: "user-1",
+          roleId: "role-1",
+          durationInput: "1w",
+          expiresAtMs: 1_700_604_800_000,
+        }),
+      })
+    );
+
+    Date.now = () => 1_700_000_060_000;
+    await store.fetch(
+      new Request("https://moderation-store/timed-role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guildId: "guild-1",
+          userId: "user-1",
+          roleId: "role-1",
+          durationInput: "2h",
+          expiresAtMs: 1_700_007_200_000,
+        }),
+      })
+    );
+  } finally {
+    Date.now = originalNow;
+  }
+
+  const listResponse = await store.fetch(
+    new Request("https://moderation-store/timed-roles?guildId=guild-1")
+  );
+  const storedRows = sql.exec(
+    "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms, created_at_ms, updated_at_ms FROM timed_roles WHERE guild_id = ? ORDER BY expires_at_ms ASC",
+    "guild-1"
+  ) as Array<{
+    created_at_ms: number;
+    duration_input: string;
+    expires_at_ms: number;
+    updated_at_ms: number;
+  }>;
+
+  assert.deepEqual(await listResponse.json(), [
+    {
+      guildId: "guild-1",
+      userId: "user-1",
+      roleId: "role-1",
+      durationInput: "2h",
+      expiresAtMs: 1_700_007_200_000,
+    },
+  ]);
+  assert.equal(storedRows.length, 1);
+  assert.equal(storedRows[0]?.duration_input, "2h");
+  assert.equal(storedRows[0]?.expires_at_ms, 1_700_007_200_000);
+  assert.equal(storedRows[0]?.created_at_ms, 1_700_000_000_000);
+  assert.equal(storedRows[0]?.updated_at_ms, 1_700_000_060_000);
+  assert.deepEqual(alarms, [1_700_604_800_000, 1_700_007_200_000]);
+});
+
 test("ModerationStoreDO removes timed roles via route", async () => {
   const ctx = {
     storage: {
@@ -501,6 +584,58 @@ test("ModerationStoreDO removes timed roles via route", async () => {
     new Request("https://moderation-store/timed-roles?guildId=guild-1")
   );
   assert.deepEqual(await listResponse.json(), []);
+});
+
+test("ModerationStoreDO clears the timed role alarm when the last assignment is removed", async () => {
+  const alarms: number[] = [];
+  let deleteAlarmCalls = 0;
+  const ctx = {
+    storage: {
+      sql: createFakeSql(),
+      setAlarm(time: number) {
+        alarms.push(time);
+        return Promise.resolve();
+      },
+      deleteAlarm() {
+        deleteAlarmCalls += 1;
+        return Promise.resolve();
+      },
+    },
+  } as unknown as DurableObjectState;
+  const store = new ModerationStoreDO(
+    ctx,
+    { BOT_USER_ID: "bot-1", DISCORD_BOT_TOKEN: "token" } as never
+  );
+
+  await store.fetch(
+    new Request("https://moderation-store/timed-role", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guildId: "guild-1",
+        userId: "user-1",
+        roleId: "role-1",
+        durationInput: "1w",
+        expiresAtMs: 1_700_604_800_000,
+      }),
+    })
+  );
+
+  const deleteResponse = await store.fetch(
+    new Request("https://moderation-store/timed-role/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guildId: "guild-1",
+        userId: "user-1",
+        roleId: "role-1",
+      }),
+    })
+  );
+
+  assert.equal(deleteResponse.status, 200);
+  assert.deepEqual(alarms, [1_700_604_800_000]);
+  assert.equal(deleteAlarmCalls, 1);
 });
 
 test("ModerationStoreDO alarm only removes timed roles after Discord role removal succeeds", async () => {

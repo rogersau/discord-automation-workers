@@ -351,7 +351,7 @@ async function handleApplicationCommand(
 
       return Response.json(
         buildEphemeralMessage(
-          `Assigned <@&${invocation.roleId}> to <@${invocation.userId}> for ${invocation.duration}.`
+          `Assigned <@&${invocation.roleId}> to <@${invocation.userId}> for ${invocation.duration} (${formatTimedRoleExpiry(parsedDuration.expiresAtMs)}).`
         )
       );
     }

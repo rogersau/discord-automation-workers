@@ -7,6 +7,7 @@ import test from "node:test";
 
 import worker from "../src/index";
 import { buildEphemeralMessage } from "../src/discord-interactions";
+import { formatTimedRoleExpiry } from "../src/timed-roles";
 
 test("worker answers Discord PING interactions", async () => {
   const { publicKeyHex, request } = await createSignedInteractionRequest({ type: 1 });
@@ -533,9 +534,15 @@ test("worker assigns a timed role for a valid guild admin command", async () => 
       );
 
       assert.equal(response.status, 200);
+      const expiresAtMs =
+        storeCalls[0] && typeof storeCalls[0].body === "object"
+          ? (storeCalls[0].body as { expiresAtMs: number }).expiresAtMs
+          : undefined;
       assert.deepEqual(
         await response.json(),
-        buildEphemeralMessage("Assigned <@&role-1> to <@user-1> for 1w.")
+        buildEphemeralMessage(
+          `Assigned <@&role-1> to <@user-1> for 1w (${formatTimedRoleExpiry(expiresAtMs as number)}).`
+        )
       );
     }
   );
