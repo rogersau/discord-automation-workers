@@ -5,6 +5,7 @@ import type {
   GuildBlockedEmojiRow,
   GuildSettingRow,
   TimedRoleAssignment,
+  TimedRoleRow,
 } from "../types";
 import type { Env } from "../env";
 import { buildBlocklistConfig, normalizeEmoji } from "../blocklist";
@@ -91,8 +92,8 @@ export class ModerationStoreDO implements DurableObject {
         return Response.json(this.applyGuildEmojiMutation(body));
       } catch (error) {
         return this.errorResponse(error);
-        }
       }
+    }
 
     if (request.method === "POST" && url.pathname === "/timed-role") {
       try {
@@ -135,12 +136,10 @@ export class ModerationStoreDO implements DurableObject {
   }
 
   async alarm(): Promise<void> {
-    const expiredRows: TimedRoleAssignment[] = [
-      ...this.sql.exec(
-        "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms FROM timed_roles WHERE expires_at_ms <= ? ORDER BY expires_at_ms ASC",
-        Date.now()
-      ),
-    ].map(mapTimedRoleSelection);
+    const expiredRows = this.readTimedRoleSelections(
+      "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms, created_at_ms, updated_at_ms FROM timed_roles WHERE expires_at_ms <= ? ORDER BY expires_at_ms ASC",
+      Date.now()
+    );
 
     for (const row of expiredRows) {
       try {
@@ -165,7 +164,10 @@ export class ModerationStoreDO implements DurableObject {
   }
 
   private readTimedRoleSelections(query: string, ...params: unknown[]): TimedRoleAssignment[] {
-    return [...this.sql.exec(query, ...params)].map(mapTimedRoleSelection);
+    const rows: TimedRoleRow[] = [...this.sql.exec(query, ...params)].map(
+      mapTimedRoleRow
+    );
+    return rows.map(mapTimedRoleAssignment);
   }
 
   private readConfig(): BlocklistConfig {
@@ -286,7 +288,7 @@ export class ModerationStoreDO implements DurableObject {
 
   private listTimedRolesByGuild(guildId: string): TimedRoleAssignment[] {
     return this.readTimedRoleSelections(
-      "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms FROM timed_roles WHERE guild_id = ? ORDER BY expires_at_ms ASC",
+      "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms, created_at_ms, updated_at_ms FROM timed_roles WHERE guild_id = ? ORDER BY expires_at_ms ASC",
       guildId
     );
   }
@@ -489,12 +491,24 @@ function asOptionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function mapTimedRoleSelection(row: Record<string, unknown>): TimedRoleAssignment {
+function mapTimedRoleRow(row: Record<string, unknown>): TimedRoleRow {
   return {
-    guildId: row.guild_id as string,
-    userId: row.user_id as string,
-    roleId: row.role_id as string,
-    durationInput: row.duration_input as string,
-    expiresAtMs: row.expires_at_ms as number,
+    guild_id: row.guild_id as string,
+    user_id: row.user_id as string,
+    role_id: row.role_id as string,
+    duration_input: row.duration_input as string,
+    expires_at_ms: row.expires_at_ms as number,
+    created_at_ms: row.created_at_ms as number,
+    updated_at_ms: row.updated_at_ms as number,
+  };
+}
+
+function mapTimedRoleAssignment(row: TimedRoleRow): TimedRoleAssignment {
+  return {
+    guildId: row.guild_id,
+    userId: row.user_id,
+    roleId: row.role_id,
+    durationInput: row.duration_input,
+    expiresAtMs: row.expires_at_ms,
   };
 }

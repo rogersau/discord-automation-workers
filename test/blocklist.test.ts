@@ -826,33 +826,53 @@ function createFakeSql(options?: {
 
       if (
         query ===
-        "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms FROM timed_roles WHERE guild_id = ? ORDER BY expires_at_ms ASC"
+        "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms, created_at_ms, updated_at_ms FROM timed_roles WHERE guild_id = ? ORDER BY expires_at_ms ASC"
       ) {
         return [...timedRoles.values()]
           .filter((row) => row.guild_id === params[0])
           .sort((a, b) => a.expires_at_ms - b.expires_at_ms)
-          .map(({ guild_id, user_id, role_id, duration_input, expires_at_ms }) => ({
+          .map(({
             guild_id,
             user_id,
             role_id,
             duration_input,
             expires_at_ms,
+            created_at_ms,
+            updated_at_ms,
+          }) => ({
+            guild_id,
+            user_id,
+            role_id,
+            duration_input,
+            expires_at_ms,
+            created_at_ms,
+            updated_at_ms,
           }));
       }
 
       if (
         query ===
-        "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms FROM timed_roles WHERE expires_at_ms <= ? ORDER BY expires_at_ms ASC"
+        "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms, created_at_ms, updated_at_ms FROM timed_roles WHERE expires_at_ms <= ? ORDER BY expires_at_ms ASC"
       ) {
         return [...timedRoles.values()]
           .filter((row) => row.expires_at_ms <= (params[0] as number))
           .sort((a, b) => a.expires_at_ms - b.expires_at_ms)
-          .map(({ guild_id, user_id, role_id, duration_input, expires_at_ms }) => ({
+          .map(({
             guild_id,
             user_id,
             role_id,
             duration_input,
             expires_at_ms,
+            created_at_ms,
+            updated_at_ms,
+          }) => ({
+            guild_id,
+            user_id,
+            role_id,
+            duration_input,
+            expires_at_ms,
+            created_at_ms,
+            updated_at_ms,
           }));
       }
 
