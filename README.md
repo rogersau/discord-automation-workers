@@ -126,12 +126,18 @@ Once the interactions endpoint is configured and a bootstrap has run successfull
 - `/blocklist add emoji:<emoji>` — block an emoji in the current server
 - `/blocklist remove emoji:<emoji>` — unblock an emoji in the current server
 - `/blocklist list` — show the current server's blocked emojis
+- `/timedrole add user:<member> role:<role> duration:<duration>` — assign a pre-configured role temporarily
+- `/timedrole remove user:<member> role:<role>` — remove an active timed role early
+- `/timedrole list` — list active timed roles in the current server
 
 Examples:
 
 ```text
 /blocklist add emoji:✅
 /blocklist remove emoji:✅
+/timedrole add user:@member role:@Muted duration:1w
+/timedrole remove user:@member role:@Muted
+/timedrole list
 ```
 
 Only members with **Administrator** or **Manage Guild** permissions can use the commands.
@@ -139,6 +145,8 @@ Only members with **Administrator** or **Manage Guild** permissions can use the 
 These commands are **server-local**: they update the blocklist for the guild where they are used, not the global operator blocklist. If an emoji is already blocked or already absent, the bot returns an explicit no-op message instead of pretending a change happened.
 
 `/blocklist list` responds ephemerally to the invoker and shows only the current server's blocked emojis.
+
+For timed roles, the role must already exist and be configured in Discord; the bot only adds and removes it on a timer.
 
 ## Managing the global blocklist via admin API
 
