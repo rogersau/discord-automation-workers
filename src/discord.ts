@@ -84,6 +84,24 @@ export async function deleteReaction(
   }
 }
 
+export async function addGuildMemberRole(
+  guildId: string,
+  userId: string,
+  roleId: string,
+  botToken: string
+): Promise<void> {
+  await mutateGuildMemberRole("PUT", guildId, userId, roleId, botToken);
+}
+
+export async function removeGuildMemberRole(
+  guildId: string,
+  userId: string,
+  roleId: string,
+  botToken: string
+): Promise<void> {
+  await mutateGuildMemberRole("DELETE", guildId, userId, roleId, botToken);
+}
+
 /**
  * Encode an emoji for use in Discord API URLs.
  * Custom emojis: name:id format
@@ -98,6 +116,30 @@ function encodeEmoji(emoji: DiscordReaction["emoji"]): string {
     return encodeURIComponent(emoji.name);
   }
   throw new Error("Invalid emoji: no name or id");
+}
+
+async function mutateGuildMemberRole(
+  method: "PUT" | "DELETE",
+  guildId: string,
+  userId: string,
+  roleId: string,
+  botToken: string
+): Promise<void> {
+  const response = await fetch(
+    `${DISCORD_API}/guilds/${guildId}/members/${userId}/roles/${roleId}`,
+    {
+      method,
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok && response.status !== 204) {
+    const error = await response.text().catch(() => "Unknown error");
+    throw new Error(`Discord API error: ${response.status} ${error}`);
+  }
 }
 
 function hexToBytes(hex: string): Uint8Array {
