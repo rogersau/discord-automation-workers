@@ -15,9 +15,22 @@ import { SLASH_COMMAND_DEFINITIONS } from "./discord-commands";
 type CommandInvocation =
   | { commandName: "blocklist"; subcommandName: "list" }
   | { commandName: "blocklist"; subcommandName: "add" | "remove"; emoji: string }
-  | { commandName: "timedrole"; subcommandName: "list" }
-  | { commandName: "timedrole"; subcommandName: "add"; userId: string; roleId: string; duration: string }
-  | { commandName: "timedrole"; subcommandName: "remove"; userId: string; roleId: string };
+  | { commandName: "timedrole"; subcommandName: "list"; emoji?: string }
+  | {
+      commandName: "timedrole";
+      subcommandName: "add";
+      userId: string;
+      roleId: string;
+      duration: string;
+      emoji?: string;
+    }
+  | {
+      commandName: "timedrole";
+      subcommandName: "remove";
+      userId: string;
+      roleId: string;
+      emoji?: string;
+    };
 
 function getStringOptionValue(options: any[], name: string): string | null {
   const value = options.find((option: any) => option.name === name)?.value;

@@ -232,10 +232,6 @@ async function handleApplicationCommand(
 
   const storeStub = getModerationStoreStub(env);
 
-  if (invocation.commandName !== "blocklist") {
-    return Response.json(buildEphemeralMessage("Unsupported command."));
-  }
-
   if (invocation.subcommandName === "list") {
     try {
       const config = await getBlocklistFromStore(() =>
