@@ -1,5 +1,7 @@
 # Discord Reaction Moderator
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/rogersau/discord-automation-workers)
+
 A Cloudflare-first Discord reaction moderator built on **SQLite-backed Durable Objects**. The Worker provisions its moderation store and gateway session on deploy, keeps the Discord Gateway connection inside Cloudflare, and stays free-tier-compatible.
 
 ## What this deploy gives you
