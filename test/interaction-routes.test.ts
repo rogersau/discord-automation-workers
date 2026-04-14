@@ -499,6 +499,424 @@ test("worker returns the current server blocklist for /blocklist list", async ()
   ]);
 });
 
+test("worker assigns a timed role for a valid guild admin command", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+
+  await withMockedFetch(
+    async () => new Response(null, { status: 204 }),
+    async () => {
+      const { publicKeyHex, request } = await createSignedInteractionRequest(
+        createTimedRoleCommand({
+          guildId: "guild-123",
+          permissions: "8",
+          subcommand: "add",
+          userId: "user-1",
+          roleId: "role-1",
+          duration: "1w",
+        })
+      );
+
+      const response = await worker.fetch(
+        request,
+        createEnv({
+          DISCORD_PUBLIC_KEY: publicKeyHex,
+          moderationFetch(input, init) {
+            storeCalls.push({
+              input: String(input),
+              method: init?.method ?? "GET",
+              body: init?.body ? JSON.parse(String(init.body)) : null,
+            });
+            return Response.json({ ok: true });
+          },
+        }),
+        {} as ExecutionContext
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        await response.json(),
+        buildEphemeralMessage("Assigned <@&role-1> to <@user-1> for 1w.")
+      );
+    }
+  );
+
+  assert.equal(storeCalls[0]?.input, "https://moderation-store/timed-role");
+  assert.equal(storeCalls[0]?.method, "POST");
+  assert.deepEqual(storeCalls[0]?.body, {
+    guildId: "guild-123",
+    userId: "user-1",
+    roleId: "role-1",
+    durationInput: "1w",
+    expiresAtMs: storeCalls[0] && typeof storeCalls[0].body === "object"
+      ? (storeCalls[0].body as { expiresAtMs: number }).expiresAtMs
+      : undefined,
+  });
+  assert.equal(typeof (storeCalls[0]?.body as { expiresAtMs?: unknown })?.expiresAtMs, "number");
+});
+
+test("worker rejects invalid timed-role durations", async () => {
+  const { publicKeyHex, request } = await createSignedInteractionRequest(
+    createTimedRoleCommand({
+      guildId: "guild-123",
+      permissions: "8",
+      subcommand: "add",
+      userId: "user-1",
+      roleId: "role-1",
+      duration: "tomorrow",
+    })
+  );
+
+  const response = await worker.fetch(
+    request,
+    createEnv({ DISCORD_PUBLIC_KEY: publicKeyHex }),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    await response.json(),
+    buildEphemeralMessage("Invalid duration. Use values like 1h, 1w, or 1m.")
+  );
+});
+
+test("worker rolls back timed role persistence when Discord role assignment fails", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+
+  await withMockedFetch(
+    async () => new Response("discord unavailable", { status: 500 }),
+    async () => {
+      const { publicKeyHex, request } = await createSignedInteractionRequest(
+        createTimedRoleCommand({
+          guildId: "guild-123",
+          permissions: "8",
+          subcommand: "add",
+          userId: "user-1",
+          roleId: "role-1",
+          duration: "1w",
+        })
+      );
+
+      const response = await worker.fetch(
+        request,
+        createEnv({
+          DISCORD_PUBLIC_KEY: publicKeyHex,
+          moderationFetch(input, init) {
+            storeCalls.push({
+              input: String(input),
+              method: init?.method ?? "GET",
+              body: init?.body ? JSON.parse(String(init.body)) : null,
+            });
+            return Response.json({ ok: true });
+          },
+        }),
+        {} as ExecutionContext
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        await response.json(),
+        buildEphemeralMessage("Failed to assign the timed role.")
+      );
+    }
+  );
+
+  assert.deepEqual(
+    storeCalls.map((call) => ({ input: call.input, method: call.method })),
+    [
+      { input: "https://moderation-store/timed-role", method: "POST" },
+      { input: "https://moderation-store/timed-role/remove", method: "POST" },
+    ]
+  );
+});
+
+test("worker reports rollback failure when timed role cleanup cannot be persisted", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+
+  await withMockedFetch(
+    async () => new Response("discord unavailable", { status: 500 }),
+    async () => {
+      const { publicKeyHex, request } = await createSignedInteractionRequest(
+        createTimedRoleCommand({
+          guildId: "guild-123",
+          permissions: "8",
+          subcommand: "add",
+          userId: "user-1",
+          roleId: "role-1",
+          duration: "1w",
+        })
+      );
+
+      let postCount = 0;
+      const response = await worker.fetch(
+        request,
+        createEnv({
+          DISCORD_PUBLIC_KEY: publicKeyHex,
+          moderationFetch(input, init) {
+            const method = init?.method ?? "GET";
+            const body = init?.body ? JSON.parse(String(init.body)) : null;
+            storeCalls.push({
+              input: String(input),
+              method,
+              body,
+            });
+            postCount += method === "POST" ? 1 : 0;
+
+            if (postCount === 2) {
+              return new Response("rollback failed", { status: 500 });
+            }
+
+            return Response.json({ ok: true });
+          },
+        }),
+        {} as ExecutionContext
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        await response.json(),
+        buildEphemeralMessage("Failed to assign the timed role, and rollback failed.")
+      );
+    }
+  );
+
+  assert.deepEqual(
+    storeCalls.map((call) => ({ input: call.input, method: call.method })),
+    [
+      { input: "https://moderation-store/timed-role", method: "POST" },
+      { input: "https://moderation-store/timed-role/remove", method: "POST" },
+    ]
+  );
+});
+
+test("worker removes an active timed role assignment", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+  const discordCalls: Array<{ input: string; method: string | undefined }> = [];
+
+  await withMockedFetch(
+    async (input, init) => {
+      discordCalls.push({ input: String(input), method: init?.method });
+      return new Response(null, { status: 204 });
+    },
+    async () => {
+      const { publicKeyHex, request } = await createSignedInteractionRequest(
+        createTimedRoleCommand({
+          guildId: "guild-123",
+          permissions: "8",
+          subcommand: "remove",
+          userId: "user-1",
+          roleId: "role-1",
+        })
+      );
+
+      const response = await worker.fetch(
+        request,
+        createEnv({
+          DISCORD_PUBLIC_KEY: publicKeyHex,
+          moderationFetch(input, init) {
+            storeCalls.push({
+              input: String(input),
+              method: init?.method ?? "GET",
+              body: init?.body ? JSON.parse(String(init.body)) : null,
+            });
+
+            if ((init?.method ?? "GET") === "GET") {
+              return Response.json([
+                {
+                  guildId: "guild-123",
+                  userId: "user-1",
+                  roleId: "role-1",
+                  durationInput: "1w",
+                  expiresAtMs: 1_700_604_800_000,
+                },
+              ]);
+            }
+
+            return Response.json({ ok: true });
+          },
+        }),
+        {} as ExecutionContext
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        await response.json(),
+        buildEphemeralMessage("Removed <@&role-1> from <@user-1>.")
+      );
+    }
+  );
+
+  assert.deepEqual(
+    storeCalls.map((call) => ({ input: call.input, method: call.method })),
+    [
+      {
+        input: "https://moderation-store/timed-roles?guildId=guild-123",
+        method: "GET",
+      },
+      {
+        input: "https://moderation-store/timed-role/remove",
+        method: "POST",
+      },
+    ]
+  );
+  assert.deepEqual(discordCalls, [
+    {
+      input: "https://discord.com/api/v10/guilds/guild-123/members/user-1/roles/role-1",
+      method: "DELETE",
+    },
+  ]);
+});
+
+test("worker returns a no-op response when the timed role assignment is not active", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+  const discordCalls: Array<{ input: string; method: string | undefined }> = [];
+
+  await withMockedFetch(
+    async (input, init) => {
+      discordCalls.push({ input: String(input), method: init?.method });
+      return new Response(null, { status: 204 });
+    },
+    async () => {
+      const { publicKeyHex, request } = await createSignedInteractionRequest(
+        createTimedRoleCommand({
+          guildId: "guild-123",
+          permissions: "8",
+          subcommand: "remove",
+          userId: "user-1",
+          roleId: "role-1",
+        })
+      );
+
+      const response = await worker.fetch(
+        request,
+        createEnv({
+          DISCORD_PUBLIC_KEY: publicKeyHex,
+          moderationFetch(input, init) {
+            storeCalls.push({
+              input: String(input),
+              method: init?.method ?? "GET",
+              body: init?.body ? JSON.parse(String(init.body)) : null,
+            });
+            return Response.json([]);
+          },
+        }),
+        {} as ExecutionContext
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        await response.json(),
+        buildEphemeralMessage("<@&role-1> is not currently active for <@user-1>.")
+      );
+    }
+  );
+
+  assert.deepEqual(storeCalls, [
+    {
+      input: "https://moderation-store/timed-roles?guildId=guild-123",
+      method: "GET",
+      body: null,
+    },
+  ]);
+  assert.deepEqual(discordCalls, []);
+});
+
+test("worker returns the current timed role assignments for /timedrole list", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+  const { publicKeyHex, request } = await createSignedInteractionRequest(
+    createTimedRoleCommand({
+      guildId: "guild-123",
+      permissions: "8",
+      subcommand: "list",
+    })
+  );
+
+  const response = await worker.fetch(
+    request,
+    createEnv({
+      DISCORD_PUBLIC_KEY: publicKeyHex,
+      moderationFetch(input, init) {
+        storeCalls.push({
+          input: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return Response.json([
+          {
+            guildId: "guild-123",
+            userId: "user-1",
+            roleId: "role-1",
+            durationInput: "1w",
+            expiresAtMs: 1_700_604_800_000,
+          },
+          {
+            guildId: "guild-123",
+            userId: "user-2",
+            roleId: "role-2",
+            durationInput: "2h",
+            expiresAtMs: 1_700_007_200_000,
+          },
+        ]);
+      },
+    }),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    await response.json(),
+    buildEphemeralMessage(
+      "Active timed roles:\n- <@user-1> -> <@&role-1> (1w, expires <t:1700604800:R>)\n- <@user-2> -> <@&role-2> (2h, expires <t:1700007200:R>)"
+    )
+  );
+  assert.deepEqual(storeCalls, [
+    {
+      input: "https://moderation-store/timed-roles?guildId=guild-123",
+      method: "GET",
+      body: null,
+    },
+  ]);
+});
+
+test("worker returns the empty state for /timedrole list when no assignments are active", async () => {
+  const storeCalls: Array<{ input: string; method: string; body: unknown }> = [];
+  const { publicKeyHex, request } = await createSignedInteractionRequest(
+    createTimedRoleCommand({
+      guildId: "guild-123",
+      permissions: "8",
+      subcommand: "list",
+    })
+  );
+
+  const response = await worker.fetch(
+    request,
+    createEnv({
+      DISCORD_PUBLIC_KEY: publicKeyHex,
+      moderationFetch(input, init) {
+        storeCalls.push({
+          input: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return Response.json([]);
+      },
+    }),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    await response.json(),
+    buildEphemeralMessage("No timed roles are active in this server.")
+  );
+  assert.deepEqual(storeCalls, [
+    {
+      input: "https://moderation-store/timed-roles?guildId=guild-123",
+      method: "GET",
+      body: null,
+    },
+  ]);
+});
+
 function createApplicationCommand(
   options:
     | { guildId: string; permissions: string; subcommand: "add" | "remove"; emoji: string }
@@ -517,6 +935,55 @@ function createApplicationCommand(
     },
     data: {
       name: "blocklist",
+      options: [
+        {
+          type: 1,
+          name: options.subcommand,
+          options: subOptions,
+        },
+      ],
+    },
+  };
+}
+
+function createTimedRoleCommand(
+  options:
+    | {
+        guildId: string;
+        permissions: string;
+        subcommand: "add";
+        userId: string;
+        roleId: string;
+        duration: string;
+      }
+    | {
+        guildId: string;
+        permissions: string;
+        subcommand: "remove";
+        userId: string;
+        roleId: string;
+      }
+    | { guildId: string; permissions: string; subcommand: "list" }
+) {
+  const subOptions =
+    options.subcommand === "list"
+      ? []
+      : [
+          { type: 6, name: "user", value: options.userId },
+          { type: 8, name: "role", value: options.roleId },
+          ...(options.subcommand === "add"
+            ? [{ type: 3, name: "duration", value: options.duration }]
+            : []),
+        ];
+
+  return {
+    type: 2,
+    guild_id: options.guildId,
+    member: {
+      permissions: options.permissions,
+    },
+    data: {
+      name: "timedrole",
       options: [
         {
           type: 1,
@@ -618,4 +1085,17 @@ function createEnv(options?: {
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function withMockedFetch<T>(
+  handler: typeof globalThis.fetch,
+  callback: () => Promise<T>
+): Promise<T> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = handler;
+  try {
+    return await callback();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }

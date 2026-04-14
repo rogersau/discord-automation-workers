@@ -13,9 +13,15 @@ import {
   extractCommandInvocation,
   hasGuildAdminPermission,
 } from "./discord-interactions";
-import { syncApplicationCommands, verifyDiscordSignature } from "./discord";
+import {
+  addGuildMemberRole,
+  removeGuildMemberRole,
+  syncApplicationCommands,
+  verifyDiscordSignature,
+} from "./discord";
 import type { Env } from "./env";
 import { getModerationStoreStub } from "./reaction-moderation";
+import { formatTimedRoleExpiry, parseTimedRoleDuration } from "./timed-roles";
 
 export { GatewaySessionDO, ModerationStoreDO };
 
@@ -232,6 +238,197 @@ async function handleApplicationCommand(
   }
 
   const storeStub = getModerationStoreStub(env);
+
+  if (invocation.commandName === "timedrole") {
+    if (invocation.subcommandName === "list") {
+      let listResponse: Response;
+      try {
+        listResponse = await storeStub.fetch(
+          `https://moderation-store/timed-roles?guildId=${encodeURIComponent(interaction.guild_id)}`
+        );
+      } catch (error) {
+        console.error("Failed to load timed roles", error);
+        return Response.json(buildEphemeralMessage("Failed to load timed roles."));
+      }
+
+      if (!listResponse.ok) {
+        console.error("Timed role list failed", await listResponse.text());
+        return Response.json(buildEphemeralMessage("Failed to load timed roles."));
+      }
+
+      const assignments = (await listResponse.json()) as Array<{
+        userId: string;
+        roleId: string;
+        durationInput: string;
+        expiresAtMs: number;
+      }>;
+      const content =
+        assignments.length === 0
+          ? "No timed roles are active in this server."
+          : `Active timed roles:\n${assignments
+              .map(
+                (entry) =>
+                  `- <@${entry.userId}> -> <@&${entry.roleId}> (${entry.durationInput}, expires ${formatTimedRoleExpiry(entry.expiresAtMs)})`
+              )
+              .join("\n")}`;
+
+      return Response.json(buildEphemeralMessage(content));
+    }
+
+    if (invocation.subcommandName === "add") {
+      const parsedDuration = parseTimedRoleDuration(invocation.duration);
+      if (!parsedDuration) {
+        return Response.json(
+          buildEphemeralMessage("Invalid duration. Use values like 1h, 1w, or 1m.")
+        );
+      }
+
+      let storeResponse: Response;
+      try {
+        storeResponse = await storeStub.fetch("https://moderation-store/timed-role", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            guildId: interaction.guild_id,
+            userId: invocation.userId,
+            roleId: invocation.roleId,
+            durationInput: parsedDuration.durationInput,
+            expiresAtMs: parsedDuration.expiresAtMs,
+          }),
+        });
+      } catch (error) {
+        console.error("Timed role save failed", error);
+        return Response.json(buildEphemeralMessage("Failed to save the timed role."));
+      }
+
+      if (!storeResponse.ok) {
+        console.error("Timed role save failed", await storeResponse.text());
+        return Response.json(buildEphemeralMessage("Failed to save the timed role."));
+      }
+
+      try {
+        await addGuildMemberRole(
+          interaction.guild_id,
+          invocation.userId,
+          invocation.roleId,
+          env.DISCORD_BOT_TOKEN
+        );
+      } catch (error) {
+        console.error("Timed role assignment failed", error);
+        try {
+          const rollbackResponse = await storeStub.fetch(
+            "https://moderation-store/timed-role/remove",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                guildId: interaction.guild_id,
+                userId: invocation.userId,
+                roleId: invocation.roleId,
+              }),
+            }
+          );
+
+          if (!rollbackResponse.ok) {
+            console.error("Timed role rollback failed", await rollbackResponse.text());
+            return Response.json(
+              buildEphemeralMessage(
+                "Failed to assign the timed role, and rollback failed."
+              )
+            );
+          }
+        } catch (rollbackError) {
+          console.error("Timed role rollback failed", rollbackError);
+          return Response.json(
+            buildEphemeralMessage(
+              "Failed to assign the timed role, and rollback failed."
+            )
+          );
+        }
+
+        return Response.json(buildEphemeralMessage("Failed to assign the timed role."));
+      }
+
+      return Response.json(
+        buildEphemeralMessage(
+          `Assigned <@&${invocation.roleId}> to <@${invocation.userId}> for ${invocation.duration}.`
+        )
+      );
+    }
+
+    let listResponse: Response;
+    try {
+      listResponse = await storeStub.fetch(
+        `https://moderation-store/timed-roles?guildId=${encodeURIComponent(interaction.guild_id)}`
+      );
+    } catch (error) {
+      console.error("Failed to load timed roles", error);
+      return Response.json(buildEphemeralMessage("Failed to load timed roles."));
+    }
+
+    if (!listResponse.ok) {
+      console.error("Timed role list failed", await listResponse.text());
+      return Response.json(buildEphemeralMessage("Failed to load timed roles."));
+    }
+
+    const assignments = (await listResponse.json()) as Array<{
+      userId: string;
+      roleId: string;
+    }>;
+    const activeAssignment = assignments.find(
+      (entry) =>
+        entry.userId === invocation.userId && entry.roleId === invocation.roleId
+    );
+    if (!activeAssignment) {
+      return Response.json(
+        buildEphemeralMessage(
+          `<@&${invocation.roleId}> is not currently active for <@${invocation.userId}>.`
+        )
+      );
+    }
+
+    try {
+      await removeGuildMemberRole(
+        interaction.guild_id,
+        invocation.userId,
+        invocation.roleId,
+        env.DISCORD_BOT_TOKEN
+      );
+    } catch (error) {
+      console.error("Timed role removal failed", error);
+      return Response.json(buildEphemeralMessage("Failed to remove the timed role."));
+    }
+
+    let deleteResponse: Response;
+    try {
+      deleteResponse = await storeStub.fetch(
+        "https://moderation-store/timed-role/remove",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            guildId: interaction.guild_id,
+            userId: invocation.userId,
+            roleId: invocation.roleId,
+          }),
+        }
+      );
+    } catch (error) {
+      console.error("Timed role clear failed", error);
+      return Response.json(buildEphemeralMessage("Failed to clear the timed role."));
+    }
+
+    if (!deleteResponse.ok) {
+      console.error("Timed role clear failed", await deleteResponse.text());
+      return Response.json(buildEphemeralMessage("Failed to clear the timed role."));
+    }
+
+    return Response.json(
+      buildEphemeralMessage(
+        `Removed <@&${invocation.roleId}> from <@${invocation.userId}>.`
+      )
+    );
+  }
 
   if (invocation.subcommandName === "list") {
     try {
