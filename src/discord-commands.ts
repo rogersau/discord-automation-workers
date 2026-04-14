@@ -26,4 +26,34 @@ export const SLASH_COMMAND_DEFINITIONS = [
       },
     ],
   },
+  {
+    name: "timedrole",
+    description: "Manage timed role assignments in this server",
+    options: [
+      {
+        type: 1,
+        name: "add",
+        description: "Assign a role to a user for a limited duration",
+        options: [
+          { type: 6, name: "user", description: "User to assign the role to", required: true },
+          { type: 8, name: "role", description: "Role to assign", required: true },
+          { type: 3, name: "duration", description: "How long to keep the role (for example 1h, 1w, 1m)", required: true },
+        ],
+      },
+      {
+        type: 1,
+        name: "remove",
+        description: "Remove a timed role assignment from a user",
+        options: [
+          { type: 6, name: "user", description: "User to remove the role from", required: true },
+          { type: 8, name: "role", description: "Role to remove", required: true },
+        ],
+      },
+      {
+        type: 1,
+        name: "list",
+        description: "List timed role assignments in this server",
+      },
+    ],
+  },
 ];

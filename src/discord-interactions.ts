@@ -12,10 +12,19 @@ export function hasGuildAdminPermission(permissions: string): boolean {
 
 import { SLASH_COMMAND_DEFINITIONS } from "./discord-commands";
 
-export function extractCommandInvocation(invocation: any):
-  | { commandName: string; subcommandName: "list" }
-  | { commandName: string; subcommandName: "add" | "remove"; emoji: string }
-  | null {
+type CommandInvocation =
+  | { commandName: "blocklist"; subcommandName: "list" }
+  | { commandName: "blocklist"; subcommandName: "add" | "remove"; emoji: string }
+  | { commandName: "timedrole"; subcommandName: "list" }
+  | { commandName: "timedrole"; subcommandName: "add"; userId: string; roleId: string; duration: string }
+  | { commandName: "timedrole"; subcommandName: "remove"; userId: string; roleId: string };
+
+function getStringOptionValue(options: any[], name: string): string | null {
+  const value = options.find((option: any) => option.name === name)?.value;
+  return typeof value === "string" ? value : null;
+}
+
+export function extractCommandInvocation(invocation: any): CommandInvocation | null {
   const data = invocation?.data;
   if (!data || typeof data.name !== "string") return null;
 
@@ -32,19 +41,48 @@ export function extractCommandInvocation(invocation: any):
   if (!subDef) return null;
 
   if (sub.name === "list") {
-    return { commandName: data.name, subcommandName: "list" };
+    if (data.name === "blocklist") {
+      return { commandName: "blocklist", subcommandName: "list" };
+    }
+
+    if (data.name === "timedrole") {
+      return { commandName: "timedrole", subcommandName: "list" };
+    }
+
+    return null;
   }
 
-  const emojiDef = (subDef.options || []).find((o: any) => o.name === "emoji" && o.type === 3);
-  if (!emojiDef) return null;
+  const subOptions = Array.isArray(sub.options) ? sub.options : [];
 
-  const emojiOpt = Array.isArray(sub.options)
-    ? sub.options.find((o: any) => o.name === "emoji")
-    : undefined;
-  const emoji = emojiOpt?.value;
-  if (typeof emoji !== "string") return null;
+  if (data.name === "blocklist") {
+    const emojiDef = (subDef.options || []).find((o: any) => o.name === "emoji" && o.type === 3);
+    if (!emojiDef) return null;
 
-  return { commandName: data.name, subcommandName: sub.name, emoji };
+    const emoji = getStringOptionValue(subOptions, "emoji");
+    if (!emoji || (sub.name !== "add" && sub.name !== "remove")) return null;
+
+    return { commandName: "blocklist", subcommandName: sub.name, emoji };
+  }
+
+  const userDef = (subDef.options || []).find((o: any) => o.name === "user" && o.type === 6);
+  const roleDef = (subDef.options || []).find((o: any) => o.name === "role" && o.type === 8);
+  if (!userDef || !roleDef) return null;
+
+  const userId = getStringOptionValue(subOptions, "user");
+  const roleId = getStringOptionValue(subOptions, "role");
+  if (!userId || !roleId) return null;
+
+  if (sub.name === "remove") {
+    return { commandName: "timedrole", subcommandName: "remove", userId, roleId };
+  }
+
+  const durationDef = (subDef.options || []).find((o: any) => o.name === "duration" && o.type === 3);
+  if (!durationDef || sub.name !== "add") return null;
+
+  const duration = getStringOptionValue(subOptions, "duration");
+  if (!duration) return null;
+
+  return { commandName: "timedrole", subcommandName: "add", userId, roleId, duration };
 }
 
 export function buildEphemeralMessage(content: string) {
