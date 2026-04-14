@@ -19,6 +19,11 @@ export const SLASH_COMMAND_DEFINITIONS = [
           { type: 3, name: "emoji", description: "Emoji to unblock", required: true },
         ],
       },
+      {
+        type: 1,
+        name: "list",
+        description: "List the emojis blocked in this server",
+      },
     ],
   },
 ];

@@ -6,19 +6,22 @@ A Cloudflare-first Discord reaction moderator built on **SQLite-backed Durable O
 
 - **SQLite Durable Object moderation store** for blocklist state
 - **Gateway session Durable Object** that connects to Discord from Cloudflare
-- **Signed `/interactions` endpoint** for Discord slash commands
+- **Guild-scoped slash commands** for blocklist management
+- **Signed `/interactions` endpoint** for Discord interactions
 - **Automatic slash command sync** before each bootstrap when `DISCORD_APPLICATION_ID` is set
 - **Automatic gateway bootstrap** on a scheduled trigger after deploy
-- **Admin APIs** for blocklist reads/writes and gateway status/start
+- **Operator/admin HTTP APIs** for global blocklist reads/writes and gateway status/start
 - **No KV namespace setup** and no external reaction relay required
 
-The required setup is adding your Discord token, configuring the public application values, and registering the Worker URL as the Discord interactions endpoint.
+The required setup is adding your Discord token, configuring the public Discord application values, and registering the Worker URL as the Discord interactions endpoint.
 
 ## Architecture
 
 - `ModerationStoreDO` stores blocked emojis and app config in SQLite.
 - `GatewaySessionDO` maintains the Discord Gateway connection, resumes sessions, and applies moderation to `MESSAGE_REACTION_ADD` events.
 - The public Worker exposes `/health`, `/interactions`, `/admin/blocklist`, `/admin/gateway/status`, and `/admin/gateway/start`.
+- Discord slash commands update the current server's blocklist.
+- The `/admin/*` HTTP routes remain the operator surface for global settings and gateway control.
 
 ## Prerequisites
 
@@ -44,7 +47,7 @@ npm install
 6. Copy the public key for `DISCORD_PUBLIC_KEY`.
 7. Invite the bot with at least the **Manage Messages** permission.
 
-The gateway session requests the `GUILDS` and `GUILD_MESSAGE_REACTIONS` intents. No privileged intents are required for the current moderation flow.
+The gateway session requests the `GUILDS` and `GUILD_MESSAGE_REACTIONS` intents. No privileged intents are required for the current moderation flow. To use the slash commands, the person invoking them must have **Administrator** or **Manage Guild** in that server.
 
 ### 3. Configure Wrangler variables and secrets
 
@@ -105,7 +108,7 @@ To force an immediate start instead of waiting for the next scheduled bootstrap:
 curl -X POST https://your-worker-url.workers.dev/admin/gateway/start
 ```
 
-That admin bootstrap path uses the same command-sync-first flow as the scheduled bootstrap.
+That admin bootstrap path uses the same command-sync-first flow as the scheduled bootstrap, so it is the fastest way to force a command re-sync after updating configuration.
 
 If `ADMIN_AUTH_SECRET` is configured, include it as a bearer token on admin requests:
 
@@ -132,7 +135,11 @@ Examples:
 
 Only members with **Administrator** or **Manage Guild** permissions can use the commands.
 
-## Managing the blocklist
+These commands are **server-local**: they update the blocklist for the guild where they are used, not the global operator blocklist. If an emoji is already blocked or already absent, the bot returns an explicit no-op message instead of pretending a change happened.
+
+## Managing the global blocklist via admin API
+
+The HTTP admin routes are the operator surface for the **global** blocklist. Use them when you want to change default/global moderation behavior across servers.
 
 ### View the current blocklist
 
@@ -172,7 +179,7 @@ curl -X POST https://your-worker-url.workers.dev/admin/blocklist \
 | GET | `/health` | Basic health check |
 | POST | `/interactions` | Discord interactions callback endpoint |
 | GET | `/admin/blocklist` | Return the effective moderation config |
-| POST / PUT | `/admin/blocklist` | Add or remove blocked emojis |
+| POST / PUT | `/admin/blocklist` | Add or remove globally blocked emojis |
 | GET | `/admin/gateway/status` | Return current gateway session state |
 | POST | `/admin/gateway/start` | Force an immediate command sync + gateway bootstrap |
 

@@ -132,11 +132,43 @@ test("SLASH_COMMAND_DEFINITIONS matches expected blocklist command tree", () => 
             { type: 3, name: "emoji", description: "Emoji to unblock", required: true },
           ],
         },
+        {
+          type: 1,
+          name: "list",
+          description: "List the emojis blocked in this server",
+        },
       ],
     },
   ];
 
   assert.deepEqual(SLASH_COMMAND_DEFINITIONS, expected);
+});
+
+test("SLASH_COMMAND_DEFINITIONS includes the blocklist list subcommand", () => {
+  assert.deepEqual(SLASH_COMMAND_DEFINITIONS[0].options?.map((option) => option.name), [
+    "add",
+    "remove",
+    "list",
+  ]);
+});
+
+test("extractCommandInvocation returns a list invocation without an emoji", () => {
+  const interaction = {
+    data: {
+      name: "blocklist",
+      options: [
+        {
+          name: "list",
+          type: 1,
+        },
+      ],
+    },
+  };
+
+  assert.deepEqual(extractCommandInvocation(interaction), {
+    commandName: "blocklist",
+    subcommandName: "list",
+  });
 });
 
 test("buildEphemeralMessage returns the Discord ephemeral response shape", () => {

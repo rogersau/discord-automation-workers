@@ -13,7 +13,8 @@ export function hasGuildAdminPermission(permissions: string): boolean {
 import { SLASH_COMMAND_DEFINITIONS } from "./discord-commands";
 
 export function extractCommandInvocation(invocation: any):
-  | { commandName: string; subcommandName: string; emoji: string }
+  | { commandName: string; subcommandName: "list" }
+  | { commandName: string; subcommandName: "add" | "remove"; emoji: string }
   | null {
   const data = invocation?.data;
   if (!data || typeof data.name !== "string") return null;
@@ -30,7 +31,10 @@ export function extractCommandInvocation(invocation: any):
   );
   if (!subDef) return null;
 
-  // Ensure the subcommand definition expects an emoji option
+  if (sub.name === "list") {
+    return { commandName: data.name, subcommandName: "list" };
+  }
+
   const emojiDef = (subDef.options || []).find((o: any) => o.name === "emoji" && o.type === 3);
   if (!emojiDef) return null;
 

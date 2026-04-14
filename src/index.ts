@@ -230,6 +230,10 @@ async function handleApplicationCommand(
     return Response.json(buildEphemeralMessage("Unsupported command."));
   }
 
+  if (invocation.subcommandName === "list") {
+    return Response.json(buildEphemeralMessage("Unsupported command."));
+  }
+
   const normalizedEmoji = normalizeEmoji(invocation.emoji);
   if (!normalizedEmoji) {
     return Response.json(buildEphemeralMessage("Unsupported command."));
