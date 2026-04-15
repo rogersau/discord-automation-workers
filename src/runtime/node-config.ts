@@ -16,11 +16,7 @@ export function loadNodeRuntimeConfig(env: Record<string, string | undefined>): 
   const portText = env.PORT ?? "8787";
   const port = Number.parseInt(portText, 10);
 
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`PORT must be a valid port number (1-65535), received: ${portText}`);
-  }
-
-  if (portText !== port.toString()) {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535 || portText !== port.toString()) {
     throw new Error(`PORT must be a valid port number (1-65535), received: ${portText}`);
   }
 

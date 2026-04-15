@@ -14,6 +14,7 @@
   // include all src files per spec, but exclude Cloudflare-specific code that
   // references workers-only types unavailable in Node runtime (DurableObject,
   // ExecutionContext, DurableObjectNamespace, etc.).
+  // IMPORTANT: Add any new Cloudflare-specific src/ files to the exclude list.
   "include": ["src/**/*.ts"],
   "exclude": [
     "src/index.ts",
