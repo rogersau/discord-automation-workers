@@ -22,18 +22,6 @@ test("worker answers Discord PING interactions", async () => {
   assert.deepEqual(await response.json(), { type: 1 });
 });
 
-test("worker still answers Discord PING interactions after the runtime split", async () => {
-  const { publicKeyHex, request } = await createSignedInteractionRequest({ type: 1 });
-  const response = await worker.fetch(
-    request,
-    createEnv({ DISCORD_PUBLIC_KEY: publicKeyHex }),
-    {} as ExecutionContext
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { type: 1 });
-});
-
 test("worker rejects interactions with an invalid Discord signature", async () => {
   const { publicKeyHex, bodyText, timestamp } = await createSignedInteractionRequestBody({
     type: 1,

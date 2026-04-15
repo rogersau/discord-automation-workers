@@ -48,13 +48,16 @@ export function createCloudflareRuntime(env: Env) {
         }
       },
       async listExpiredTimedRoles() {
+        // Cloudflare: Durable Object alarms handle expiry, not polling
         return [];
       },
       async readGatewaySnapshot() {
         const response = await gatewayStub.fetch("https://gateway-session/status");
         return response.json();
       },
-      async writeGatewaySnapshot() {},
+      async writeGatewaySnapshot() {
+        // Cloudflare: Gateway session state persists in Durable Object storage
+      },
     },
     gateway: {
       async start() {

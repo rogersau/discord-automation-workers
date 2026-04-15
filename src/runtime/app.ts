@@ -70,7 +70,11 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
 
   async function bootstrap() {
     if (options.discordApplicationId) {
-      await syncApplicationCommands(options.discordApplicationId, options.discordBotToken);
+      try {
+        await syncApplicationCommands(options.discordApplicationId, options.discordBotToken);
+      } catch (error) {
+        console.error("Failed to sync slash commands during bootstrap", error);
+      }
     }
     return options.gateway.start();
   }
@@ -106,14 +110,17 @@ async function handleInteractionRequest(
   }
 
   if (interaction?.type === 2) {
-    return handleApplicationCommand(interaction, options);
+    return handleApplicationCommand(interaction, options.store, options.discordBotToken);
   }
 
   return Response.json(buildEphemeralMessage("Unsupported interaction type."));
 }
 
-async function handleApplicationCommand(interaction: DiscordInteraction, options: RuntimeAppOptions): Promise<Response> {
-  const store = options.store;
+async function handleApplicationCommand(
+  interaction: DiscordInteraction,
+  store: RuntimeStore,
+  discordBotToken: string
+): Promise<Response> {
   if (typeof interaction?.guild_id !== "string" || interaction.guild_id.length === 0) {
     return Response.json(buildEphemeralMessage("This command can only be used inside a server."));
   }
@@ -177,7 +184,7 @@ async function handleApplicationCommand(interaction: DiscordInteraction, options
         interaction.guild_id,
         invocation.userId,
         invocation.roleId,
-        options.discordBotToken
+        discordBotToken
       );
     } catch (error) {
       console.error("Timed role assignment failed", error);
@@ -224,7 +231,7 @@ async function handleApplicationCommand(interaction: DiscordInteraction, options
         interaction.guild_id,
         invocation.userId,
         invocation.roleId,
-        options.discordBotToken
+        discordBotToken
       );
     } catch (error) {
       console.error("Timed role removal failed", error);
