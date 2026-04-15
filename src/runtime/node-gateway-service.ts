@@ -30,60 +30,75 @@ interface WebSocketHandlers {
   onError: () => void;
 }
 
+interface TimerLike {
+  stop(): void;
+}
+
 interface NodeGatewayServiceOptions {
   botToken: string;
   store: RuntimeStore;
   openWebSocket: (url: string, handlers: WebSocketHandlers) => WebSocketLike;
+  setTimer: (callback: () => void | Promise<void>, delayMs: number) => TimerLike;
 }
 
 export function createNodeGatewayService(options: NodeGatewayServiceOptions): GatewayController {
   let snapshot: GatewaySnapshot;
   let socket: WebSocketLike | null = null;
   let heartbeatTimer: any = null;
+  let backoffTimer: TimerLike | null = null;
 
   return {
-    async start(): Promise<GatewaySnapshot> {
-      snapshot = await options.store.readGatewaySnapshot();
-
-      const shouldResume =
-        snapshot.sessionId !== null &&
-        snapshot.resumeGatewayUrl !== null &&
-        snapshot.lastSequence !== null;
-
-      snapshot.status = shouldResume ? "resuming" : "connecting";
-      await options.store.writeGatewaySnapshot(snapshot);
-
-      socket = options.openWebSocket(
-        snapshot.resumeGatewayUrl ?? DEFAULT_GATEWAY_URL,
-        {
-          onMessage: (payload: string) => {
-            void handleSocketMessage(payload);
-          },
-          onClose: () => {
-            if (socket) {
-              socket = null;
-            }
-            if (snapshot.status !== "idle" && snapshot.status !== "backoff") {
-              void enterBackoff();
-            }
-          },
-          onError: () => {
-            snapshot.lastError = "Gateway websocket error";
-            void options.store.writeGatewaySnapshot(snapshot);
-          },
-        }
-      );
-
-      return snapshot;
-    },
-
-    async status(): Promise<GatewaySnapshot> {
-      if (!snapshot) {
-        snapshot = await options.store.readGatewaySnapshot();
-      }
-      return snapshot;
-    },
+    start,
+    status,
   };
+
+  async function start(): Promise<GatewaySnapshot> {
+    if (!snapshot) {
+      snapshot = await options.store.readGatewaySnapshot();
+    }
+
+    if (socket !== null) {
+      return snapshot;
+    }
+
+    const shouldResume =
+      snapshot.sessionId !== null &&
+      snapshot.resumeGatewayUrl !== null &&
+      snapshot.lastSequence !== null;
+
+    snapshot.status = shouldResume ? "resuming" : "connecting";
+    await options.store.writeGatewaySnapshot(snapshot);
+
+    socket = options.openWebSocket(
+      snapshot.resumeGatewayUrl ?? DEFAULT_GATEWAY_URL,
+      {
+        onMessage: (payload: string) => {
+          void handleSocketMessage(payload);
+        },
+        onClose: () => {
+          if (socket) {
+            socket = null;
+          }
+          if (snapshot.status !== "idle" && snapshot.status !== "backoff") {
+            enterBackoff();
+          }
+        },
+        onError: () => {
+          snapshot.lastError = "Gateway websocket error";
+          void options.store.writeGatewaySnapshot(snapshot);
+        },
+      }
+    );
+
+    return snapshot;
+  }
+
+  async function status(): Promise<GatewaySnapshot> {
+    if (!snapshot) {
+      snapshot = await options.store.readGatewaySnapshot();
+    }
+    return snapshot;
+  }
 
   async function handleSocketMessage(data: string): Promise<void> {
     try {
@@ -100,7 +115,7 @@ export function createNodeGatewayService(options: NodeGatewayServiceOptions): Ga
       }
 
       if (payload.op === 9) {
-        void handleInvalidSession(payload.d === true);
+        handleInvalidSession(payload.d === true);
         return;
       }
 
@@ -185,7 +200,7 @@ export function createNodeGatewayService(options: NodeGatewayServiceOptions): Ga
     void options.store.writeGatewaySnapshot(snapshot);
   }
 
-  async function handleInvalidSession(canResume: boolean): Promise<void> {
+  function handleInvalidSession(canResume: boolean): void {
     const currentSocket = socket;
     socket = null;
 
@@ -195,19 +210,26 @@ export function createNodeGatewayService(options: NodeGatewayServiceOptions): Ga
       snapshot.lastSequence = null;
     }
 
-    await enterBackoff();
+    enterBackoff();
 
     if (currentSocket) {
       currentSocket.close();
     }
   }
 
-  async function enterBackoff(): Promise<void> {
+  function enterBackoff(): void {
     const backoffMs = nextBackoffMillis(snapshot.backoffAttempt);
     snapshot.status = "backoff";
     snapshot.backoffAttempt += 1;
     snapshot.lastError = `Reconnecting in ${backoffMs}ms`;
-    await options.store.writeGatewaySnapshot(snapshot);
+    void options.store.writeGatewaySnapshot(snapshot);
+
+    if (backoffTimer) {
+      backoffTimer.stop();
+    }
+    backoffTimer = options.setTimer(async () => {
+      await start();
+    }, backoffMs);
   }
 
   async function moderateReaction(reaction: DiscordReaction): Promise<void> {

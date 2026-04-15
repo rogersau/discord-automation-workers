@@ -8,7 +8,7 @@ interface TimedRoleSchedulerOptions {
   now: () => number;
   store: RuntimeStore;
   removeGuildMemberRole: (guildId: string, userId: string, roleId: string) => Promise<void>;
-  setTimer: (callback: () => void | Promise<void>) => TimerLike;
+  setTimer: (callback: () => void | Promise<void>, delayMs: number) => TimerLike;
 }
 
 export function createTimedRoleScheduler(options: TimedRoleSchedulerOptions) {
@@ -17,6 +17,13 @@ export function createTimedRoleScheduler(options: TimedRoleSchedulerOptions) {
   return {
     async start(): Promise<void> {
       await processExpiredRoles();
+      
+      if (timer) {
+        timer.stop();
+      }
+      timer = options.setTimer(async () => {
+        await processExpiredRoles();
+      }, 1000);
     },
 
     stop(): void {
