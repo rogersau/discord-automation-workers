@@ -214,6 +214,21 @@ test("worker rejects the legacy signed HTTP reaction ingress path", async () => 
   assert.equal(response.status, 404);
 });
 
+test("worker keeps routing /admin/gateway/status through the shared runtime layer", async () => {
+  const response = await worker.fetch(
+    new Request("https://worker.example/admin/gateway/status"),
+    createEnv({
+      gatewayFetch() {
+        return Response.json({ status: "idle" });
+      },
+    }),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { status: "idle" });
+});
+
 function createEnv(options?: {
   ADMIN_AUTH_SECRET?: string;
   DISCORD_APPLICATION_ID?: string;
