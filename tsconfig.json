@@ -10,5 +10,6 @@
     "noUnusedParameters": true,
     "types": ["@cloudflare/workers-types"],
     "lib": ["ES2022"]
-  }
+  },
+  "exclude": ["test/**/*.ts", "dist-tests", "dist-node"]
 }
