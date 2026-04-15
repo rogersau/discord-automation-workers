@@ -80,6 +80,9 @@ export function createNodeGatewayService(options: NodeGatewayServiceOptions): Ga
         snapshot.resumeGatewayUrl ?? DEFAULT_GATEWAY_URL,
         {
           onMessage: (payload: string) => {
+            if (socket !== openedSocket) {
+              return;
+            }
             void handleSocketMessage(payload);
           },
           onClose: () => {
@@ -93,6 +96,9 @@ export function createNodeGatewayService(options: NodeGatewayServiceOptions): Ga
             }
           },
           onError: () => {
+            if (socket !== openedSocket) {
+              return;
+            }
             snapshot.lastError = "Gateway websocket error";
             void persistSnapshotSafely();
           },

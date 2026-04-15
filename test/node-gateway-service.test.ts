@@ -427,3 +427,111 @@ test("node gateway service ignores stale close events from an old socket", async
   assert.equal(openedUrls.length, 2, "stale close should not tear down the newer live websocket");
   assert.equal(timerCallbacks.length, 1, "stale close should not schedule an extra backoff");
 });
+
+test("node gateway service ignores stale HELLO messages from an old socket after reconnect", async () => {
+  const socketSends: string[][] = [];
+  const messageHandlers: Array<(payload: string) => void> = [];
+  const timerCallbacks: Array<() => void | Promise<void>> = [];
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+
+  globalThis.setInterval = (((_callback: () => void, _delayMs?: number) => {
+    return { id: "heartbeat-interval" } as any;
+  }) as typeof setInterval);
+  globalThis.clearInterval = (((_token: unknown) => {}) as typeof clearInterval);
+
+  try {
+    const store = {
+      async readConfig() {
+        return { guilds: {}, botUserId: "bot-user-id" };
+      },
+      async readGatewaySnapshot() {
+        return { status: "idle", sessionId: null, resumeGatewayUrl: null, lastSequence: null, backoffAttempt: 0, lastError: null, heartbeatIntervalMs: null };
+      },
+      async writeGatewaySnapshot() {},
+    } as any;
+
+    const gateway = createNodeGatewayService({
+      botToken: "bot-token",
+      store,
+      openWebSocket(_url: string, handlers: any) {
+        const sent: string[] = [];
+        socketSends.push(sent);
+        messageHandlers.push(handlers.onMessage);
+        return {
+          send(data: string) {
+            sent.push(data);
+          },
+          close() {},
+        };
+      },
+      setTimer(callback: any, _delayMs: number) {
+        timerCallbacks.push(callback);
+        return { stop() {} };
+      },
+    });
+
+    await gateway.start();
+    messageHandlers[0]?.(JSON.stringify({ op: 9, d: true }));
+    await timerCallbacks[0]?.();
+
+    assert.equal(socketSends.length, 2, "reconnect should create a second websocket");
+
+    messageHandlers[0]?.(JSON.stringify({ op: 10, d: { heartbeat_interval: 45000 } }));
+
+    assert.deepEqual(
+      socketSends[1],
+      [],
+      "stale HELLO from the old socket should not send identify or resume on the new socket"
+    );
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("node gateway service ignores stale error events from an old socket after reconnect", async () => {
+  const errorHandlers: Array<() => void> = [];
+  const messageHandlers: Array<(payload: string) => void> = [];
+  const timerCallbacks: Array<() => void | Promise<void>> = [];
+
+  const store = {
+    async readConfig() {
+      return { guilds: {}, botUserId: "bot-user-id" };
+    },
+    async readGatewaySnapshot() {
+      return { status: "idle", sessionId: null, resumeGatewayUrl: null, lastSequence: null, backoffAttempt: 0, lastError: null, heartbeatIntervalMs: null };
+    },
+    async writeGatewaySnapshot() {},
+  } as any;
+
+  const gateway = createNodeGatewayService({
+    botToken: "bot-token",
+    store,
+    openWebSocket(_url: string, handlers: any) {
+      errorHandlers.push(handlers.onError);
+      messageHandlers.push(handlers.onMessage);
+      return {
+        send() {},
+        close() {},
+      };
+    },
+    setTimer(callback: any, _delayMs: number) {
+      timerCallbacks.push(callback);
+      return { stop() {} };
+    },
+  });
+
+  await gateway.start();
+  messageHandlers[0]?.(JSON.stringify({ op: 9, d: true }));
+  await timerCallbacks[0]?.();
+  const previousLastError = (await gateway.status()).lastError;
+
+  errorHandlers[0]?.();
+
+  assert.equal(
+    (await gateway.status()).lastError,
+    previousLastError,
+    "stale errors from the old socket should not overwrite the active connection state"
+  );
+});
