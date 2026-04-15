@@ -45,6 +45,8 @@ export interface TimedRoleAssignment {
   roleId: string;
   durationInput: string;
   expiresAtMs: number;
+  createdAtMs: number;
+  updatedAtMs: number;
 }
 
 // Effective blocklist config materialized from the moderation store.
