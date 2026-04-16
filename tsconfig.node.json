@@ -17,6 +17,7 @@
   // IMPORTANT: Add any new Cloudflare-specific src/ files to the exclude list.
   "include": ["src/**/*.ts"],
   "exclude": [
+    "src/admin/**",
     "src/index.ts",
     "src/env.ts",
     "src/discord.ts",
