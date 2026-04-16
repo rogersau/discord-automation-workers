@@ -8,6 +8,28 @@ import test from "node:test";
 import { createRuntimeApp } from "../src/runtime/app";
 import type { GatewayController, RuntimeStore } from "../src/runtime/contracts";
 
+test("createRuntimeApp serves the admin login shell and static assets", async () => {
+  const app = createRuntimeApp({
+    discordPublicKey: "a".repeat(64),
+    discordBotToken: "bot-token",
+    adminUiPassword: "let-me-in",
+    verifyDiscordRequest: async () => true,
+    store: {} as RuntimeStore,
+    gateway: {} as GatewayController,
+  });
+
+  const loginResponse = await app.fetch(new Request("https://runtime.example/admin/login"));
+  assert.equal(loginResponse.status, 200);
+  assert.match(loginResponse.headers.get("content-type") ?? "", /text\/html/);
+  assert.match(await loginResponse.text(), /admin-root/);
+
+  const assetResponse = await app.fetch(
+    new Request("https://runtime.example/admin/assets/admin.js")
+  );
+  assert.equal(assetResponse.status, 200);
+  assert.match(assetResponse.headers.get("content-type") ?? "", /javascript/);
+});
+
 test("createRuntimeApp handles health checks", async () => {
   const app = createRuntimeApp({
     discordPublicKey: "a".repeat(64),

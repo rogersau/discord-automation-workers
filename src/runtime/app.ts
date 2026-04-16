@@ -1,3 +1,4 @@
+import { ADMIN_ASSETS, ADMIN_LOGIN_HTML } from "./admin-bundle";
 import { normalizeEmoji } from "../blocklist";
 import {
   addGuildMemberRole,
@@ -31,6 +32,7 @@ interface RuntimeAppOptions {
   discordBotToken: string;
   discordApplicationId?: string;
   adminAuthSecret?: string;
+  adminUiPassword?: string;
   verifyDiscordRequest?: (timestamp: string, body: string, signature: string) => Promise<boolean>;
   store: RuntimeStore;
   gateway: GatewayController;
@@ -43,6 +45,25 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
 
       if (url.pathname === "/health") {
         return new Response("OK", { status: 200 });
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/login") {
+        return new Response(ADMIN_LOGIN_HTML, {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/admin/assets/")) {
+        const filename = url.pathname.slice("/admin/assets/".length);
+        const asset = ADMIN_ASSETS[filename];
+        if (!asset) {
+          return new Response("Not found", { status: 404 });
+        }
+        return new Response(asset.content, {
+          status: 200,
+          headers: { "content-type": asset.contentType },
+        });
       }
 
       if (request.method === "GET" && url.pathname === "/admin/gateway/status") {

@@ -8,6 +8,7 @@
     "strictNullChecks": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "jsx": "react-jsx",
     "types": ["@cloudflare/workers-types"],
     "lib": ["ES2022"]
   },
@@ -15,6 +16,7 @@
     "test/**/*.ts",
     "dist-tests",
     "dist-node",
+    "src/admin/**",
     "src/runtime/node-*.ts",
     "src/runtime/sqlite-store.ts"
   ]
