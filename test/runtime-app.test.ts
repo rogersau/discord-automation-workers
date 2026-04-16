@@ -361,3 +361,31 @@ test("createRuntimeApp serves admin shell with data-authenticated for authentica
   assert.equal(response.status, 200);
   assert.match(await response.text(), /data-authenticated="true"/);
 });
+
+test("createRuntimeApp GET /admin/api/config returns current config under session auth", async () => {
+  const app = createRuntimeApp({
+    discordPublicKey: "a".repeat(64),
+    discordBotToken: "bot-token",
+    adminUiPassword: "let-me-in",
+    adminSessionSecret: "session-secret",
+    verifyDiscordRequest: async () => true,
+    store: {
+      async readConfig() {
+        return {
+          guilds: { "guild-1": { enabled: true, emojis: ["✅"] } },
+          botUserId: "bot-user-id",
+        };
+      },
+    } as unknown as RuntimeStore,
+    gateway: {} as GatewayController,
+  });
+
+  const cookie = await createAdminSessionCookie("session-secret");
+
+  const response = await app.fetch(
+    new Request("https://runtime.example/admin/api/config", { headers: { cookie } })
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json() as { botUserId: string };
+  assert.equal(body.botUserId, "bot-user-id");
+});

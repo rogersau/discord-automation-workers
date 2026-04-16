@@ -290,3 +290,13 @@ test("worker returns 401 for /admin/api/* when ADMIN_UI_PASSWORD is set but no v
   const body = await response.json() as { error: string };
   assert.equal(body.error, "Unauthorized");
 });
+
+test("worker returns 404 for GET /admin/api/config when ADMIN_UI_PASSWORD is not configured", async () => {
+  const response = await worker.fetch(
+    new Request("https://worker.example/admin/api/config"),
+    createEnv(),
+    {} as ExecutionContext
+  );
+
+  assert.equal(response.status, 404);
+});

@@ -120,6 +120,11 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
           return Response.json(await bootstrap());
         }
 
+        if (request.method === "GET" && url.pathname === "/admin/api/config") {
+          const config = await options.store.readConfig();
+          return Response.json({ botUserId: config.botUserId });
+        }
+
         if (request.method === "POST" && url.pathname === "/admin/api/config") {
           const body = await request.json() as { key: string; value: string };
           await options.store.upsertAppConfig(body);

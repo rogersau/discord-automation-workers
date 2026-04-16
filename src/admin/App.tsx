@@ -21,6 +21,7 @@ interface Props {
 export default function App({ initialAuthenticated = false }: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
   const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export default function App({ initialAuthenticated = false }: Props) {
   }, [authenticated]);
 
   async function handleLogin() {
+    setLoginError(false);
     const res = await fetch("/admin/login", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -40,6 +42,8 @@ export default function App({ initialAuthenticated = false }: Props) {
     });
     if (res.ok || res.redirected) {
       setAuthenticated(true);
+    } else {
+      setLoginError(true);
     }
   }
 
@@ -124,6 +128,9 @@ export default function App({ initialAuthenticated = false }: Props) {
             <Button className="w-full" onClick={handleLogin}>
               Sign in
             </Button>
+            {loginError && (
+              <p className="text-sm text-red-600 text-center">Incorrect password. Please try again.</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -135,6 +142,15 @@ function ConfigEditor() {
   const [key, setKey] = useState("bot_user_id");
   const [value, setValue] = useState("");
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/admin/api/config")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { botUserId?: string } | null) => {
+        if (data?.botUserId) setValue(data.botUserId);
+      })
+      .catch(console.error);
+  }, []);
 
   async function handleSave() {
     const res = await fetch("/admin/api/config", {
@@ -167,7 +183,21 @@ function BlocklistEditor() {
   const [guildId, setGuildId] = useState("");
   const [emoji, setEmoji] = useState("");
   const [action, setAction] = useState<"add" | "remove">("add");
+  const [currentEmojis, setCurrentEmojis] = useState<string[] | null>(null);
   const [result, setResult] = useState<string | null>(null);
+
+  async function loadBlocklist(id: string) {
+    if (!id.trim()) { setCurrentEmojis(null); return; }
+    try {
+      const res = await fetch(`/admin/api/blocklist?guildId=${encodeURIComponent(id)}`);
+      if (res.ok) {
+        const data = await res.json() as { emojis: string[] };
+        setCurrentEmojis(data.emojis);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   async function handleSubmit() {
     const res = await fetch("/admin/api/blocklist", {
@@ -176,6 +206,8 @@ function BlocklistEditor() {
       body: JSON.stringify({ guildId, emoji, action }),
     });
     if (res.ok) {
+      const data = await res.json() as { guilds: Record<string, { emojis: string[] }> };
+      setCurrentEmojis(data.guilds?.[guildId]?.emojis ?? null);
       setResult(`${action === "add" ? "Blocked" : "Unblocked"} ${emoji} in ${guildId}`);
     }
   }
@@ -185,7 +217,12 @@ function BlocklistEditor() {
       <div className="flex gap-2 items-end flex-wrap">
         <div className="space-y-1">
           <Label htmlFor="bl-guild">Guild ID</Label>
-          <Input id="bl-guild" value={guildId} onChange={(e) => setGuildId(e.target.value)} />
+          <Input
+            id="bl-guild"
+            value={guildId}
+            onChange={(e) => { setGuildId(e.target.value); setCurrentEmojis(null); }}
+            onBlur={(e) => loadBlocklist(e.target.value)}
+          />
         </div>
         <div className="space-y-1">
           <Label htmlFor="bl-emoji">Emoji</Label>
@@ -200,6 +237,13 @@ function BlocklistEditor() {
         </div>
         <Button size="sm" onClick={handleSubmit}>Apply</Button>
       </div>
+      {currentEmojis !== null && (
+        <p className="text-sm text-muted-foreground">
+          {currentEmojis.length === 0
+            ? "No emojis currently blocked in this guild."
+            : `Currently blocked: ${currentEmojis.join(" ")}`}
+        </p>
+      )}
       {result && <p className="text-sm">{result}</p>}
     </div>
   );
