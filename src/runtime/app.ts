@@ -68,7 +68,7 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
         if (!(await isAdminUiAuthorized(request, options))) {
           return redirect("/admin/login");
         }
-        return renderAdminShell();
+        return renderAdminShell(true);
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/admin/assets/")) {
@@ -97,6 +97,43 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
         return Response.json(await bootstrap());
       }
 
+      if (url.pathname.startsWith("/admin/api/")) {
+        const sessionUnauthorized = await requireAdminSession(request, options);
+        if (sessionUnauthorized) return sessionUnauthorized;
+
+        if (request.method === "GET" && url.pathname === "/admin/api/gateway/status") {
+          return Response.json(await options.gateway.status());
+        }
+
+        if (request.method === "POST" && url.pathname === "/admin/api/gateway/start") {
+          return Response.json(await options.gateway.start());
+        }
+
+        if (request.method === "POST" && url.pathname === "/admin/api/config") {
+          const body = await request.json() as { key: string; value: string };
+          await options.store.upsertAppConfig(body);
+          return Response.json({ ok: true });
+        }
+
+        if (request.method === "GET" && url.pathname === "/admin/api/blocklist") {
+          const guildId = url.searchParams.get("guildId");
+          if (!guildId) {
+            return Response.json({ error: "guildId is required" }, { status: 400 });
+          }
+          const config = await options.store.readConfig();
+          const guild = config.guilds?.[guildId];
+          return Response.json({ guildId, enabled: guild?.enabled ?? true, emojis: guild?.emojis ?? [] });
+        }
+
+        if (request.method === "POST" && url.pathname === "/admin/api/blocklist") {
+          const body = await request.json() as { guildId: string; emoji: string; action: "add" | "remove" };
+          const config = await options.store.applyGuildEmojiMutation(body);
+          return Response.json(config);
+        }
+
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+
       if (request.method === "POST" && url.pathname === "/interactions") {
         return handleInteractionRequest(request, options);
       }
@@ -118,8 +155,11 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
   }
 }
 
-function renderAdminShell(): Response {
-  return new Response(ADMIN_LOGIN_HTML, {
+function renderAdminShell(authenticated = false): Response {
+  const html = authenticated
+    ? ADMIN_LOGIN_HTML.replace('<div id="admin-root"></div>', '<div id="admin-root" data-authenticated="true"></div>')
+    : ADMIN_LOGIN_HTML;
+  return new Response(html, {
     status: 200,
     headers: { "content-type": "text/html; charset=utf-8" },
   });
@@ -421,6 +461,22 @@ async function isAdminUiAuthorized(
   }
 
   return hasValidAdminSession(request, options.adminSessionSecret);
+}
+
+async function requireAdminSession(
+  request: Request,
+  options: Pick<RuntimeAppOptions, "adminSessionSecret" | "adminUiPassword">
+): Promise<Response | null> {
+  if (!options.adminUiPassword || !options.adminSessionSecret) {
+    return Response.json({ error: "Admin API is not configured." }, { status: 404 });
+  }
+
+  const authorized = await hasValidAdminSession(request, options.adminSessionSecret);
+  if (!authorized) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  return null;
 }
 
 function redirect(location: string, headersInit?: HeadersInit): Response {

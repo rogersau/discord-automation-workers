@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createRuntimeApp } from "../src/runtime/app";
+import { createAdminSessionCookie } from "../src/runtime/admin-auth";
 import type { GatewayController, RuntimeStore } from "../src/runtime/contracts";
+import type { AppConfigMutation } from "../src/runtime/admin-types";
 
 test("createRuntimeApp serves the admin login shell and static assets", async () => {
   const app = createRuntimeApp({
@@ -259,4 +261,64 @@ test("createRuntimeApp handles /admin/gateway/status via GET", async () => {
     heartbeatIntervalMs: null,
   });
   assert.deepEqual(calls, ["status"]);
+});
+
+test("createRuntimeApp returns dashboard data and blocklist mutations through session-protected admin APIs", async () => {
+  const calls: string[] = [];
+  const app = createRuntimeApp({
+    discordPublicKey: "a".repeat(64),
+    discordBotToken: "bot-token",
+    adminUiPassword: "let-me-in",
+    adminSessionSecret: "session-secret",
+    verifyDiscordRequest: async () => true,
+    store: {
+      async readConfig() {
+        return { guilds: { "guild-1": { enabled: true, emojis: ["✅"] } }, botUserId: "bot-user-id" };
+      },
+      async upsertAppConfig(body: AppConfigMutation) {
+        calls.push(`config:${body.key}:${body.value}`);
+      },
+      async applyGuildEmojiMutation(body: { guildId: string; emoji: string; action: "add" | "remove" }) {
+        calls.push(`blocklist:${body.guildId}:${body.emoji}:${body.action}`);
+        return { guilds: { [body.guildId]: { enabled: true, emojis: body.action === "add" ? ["✅", body.emoji] : ["✅"] } }, botUserId: "bot-user-id" };
+      },
+    } as unknown as RuntimeStore,
+    gateway: {
+      async status() {
+        return { status: "idle", sessionId: null, resumeGatewayUrl: null, lastSequence: null, backoffAttempt: 0, lastError: null, heartbeatIntervalMs: null };
+      },
+      async start() {
+        calls.push("gateway:start");
+        return { status: "connecting", sessionId: null, resumeGatewayUrl: null, lastSequence: null, backoffAttempt: 0, lastError: null, heartbeatIntervalMs: null };
+      },
+    },
+  });
+
+  const cookie = await createAdminSessionCookie("session-secret");
+
+  const statusResponse = await app.fetch(
+    new Request("https://runtime.example/admin/api/gateway/status", {
+      headers: { cookie },
+    })
+  );
+  assert.equal(statusResponse.status, 200);
+
+  const configResponse = await app.fetch(
+    new Request("https://runtime.example/admin/api/config", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ key: "bot_user_id", value: "new-bot-id" }),
+    })
+  );
+  assert.equal(configResponse.status, 200);
+
+  const blocklistResponse = await app.fetch(
+    new Request("https://runtime.example/admin/api/blocklist", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ guildId: "guild-1", emoji: "🚫", action: "add" }),
+    })
+  );
+  assert.equal(blocklistResponse.status, 200);
+  assert.deepEqual(calls, ["config:bot_user_id:new-bot-id", "blocklist:guild-1:🚫:add"]);
 });
