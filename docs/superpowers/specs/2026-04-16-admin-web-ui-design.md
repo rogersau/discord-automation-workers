@@ -24,13 +24,16 @@ Out of scope:
 
 ## Chosen Approach
 
-Serve the admin UI directly from the same Worker and back it with session-protected admin routes owned by that Worker.
+Serve a small React-based admin UI from the same Worker and back it with session-protected admin routes owned by that Worker.
 
-This is preferred over a bundled SPA or a separate external dashboard because:
+Use React for the dashboard structure and state updates, and use `shadcn/ui` for simple, consistent interface primitives instead of hand-rolled UI markup everywhere.
+
+This is preferred over a fully separate external dashboard because:
 
 - the repository is already Worker-first
-- deployment stays as one artifact
-- no frontend build stack needs to be introduced for v1
+- deployment still stays as one artifact
+- React gives the dashboard cleaner state updates for login state, gateway status refreshes, and blocklist editing
+- `shadcn/ui` keeps the first interface simple without inventing a custom component system
 - the UI can reuse the current Durable Object data model without inventing a second backend
 - the browser replaces curl as the supported operator surface
 
@@ -42,13 +45,24 @@ The Worker gains two kinds of admin routes:
 
 1. page routes such as `/admin/login` and `/admin`
 2. session-protected dashboard data routes under `/admin/api/*`
+3. a static asset path for the bundled React admin app
 
 Public routes remain limited to:
 
 - `/health`
 - `/interactions`
 
-All other admin behavior moves behind the password-protected UI. The current bearer-token-based curl management flow is deprecated in favor of browser-driven management. The dashboard API still uses HTTP internally because the page needs a server interface, but it is no longer designed as a human-operated curl surface.
+All other admin behavior moves behind the password-protected UI. The current bearer-token-based curl management flow is deprecated in favor of browser-driven management. The dashboard API still uses HTTP internally because the React app needs a server interface, but it is no longer designed as a human-operated curl surface.
+
+### UI stack
+
+The first UI should use:
+
+- React for the login page and dashboard
+- `shadcn/ui` components for form fields, buttons, cards, alerts, and basic layout structure
+- lightweight client-side fetch logic against same-origin `/admin/api/*` routes
+
+This should stay intentionally small. The design does not call for a full client-side routing system, a complex global state library, or a separate frontend deployment target.
 
 ### Durable Objects
 
@@ -65,7 +79,7 @@ The UI layer should call focused Worker handlers, which in turn continue to use 
 
 ### Login model
 
-Authentication uses a single shared password stored as a Worker secret separate from the Discord secrets. The login form posts the submitted password to the Worker. On success, the Worker issues a signed, HTTP-only session cookie and redirects the operator to `/admin`.
+Authentication uses a single shared password stored as a Worker secret separate from the Discord secrets. The React login form posts the submitted password to the Worker. On success, the Worker issues a signed, HTTP-only session cookie and redirects the operator to `/admin`.
 
 The session cookie should be:
 
@@ -88,7 +102,7 @@ There is no second operator auth path for v1. The password-protected web interfa
 
 ### Layout
 
-The first version should stay intentionally plain and server-owned:
+The first version should stay intentionally small even though it uses React:
 
 1. a login page
 2. a single dashboard page with a few focused cards or sections
@@ -99,7 +113,14 @@ The dashboard contains:
 - **App config**: list existing config entries and allow targeted edits
 - **Guild blocklist**: enter a guild ID, load that guild's blocked emojis, add an emoji, remove an emoji
 
-The page can use lightweight client-side JavaScript for fetch calls and UI refreshes, but the UI should stay simple enough that it can be rendered and maintained without a frontend framework.
+The page should use React state only where it materially helps:
+
+- login form submission and error state
+- gateway status loading and refresh
+- config form save state
+- guild blocklist fetch and mutation feedback
+
+Avoid adding complex client-side state management beyond what the dashboard actually needs.
 
 ### Guild blocklist workflow
 
@@ -155,7 +176,7 @@ The old curl-oriented admin routes should no longer be the supported operator in
 ### Login
 
 1. Operator visits `/admin/login`
-2. Worker returns the login page
+2. Worker returns the React login page or its HTML shell
 3. Operator submits the shared password
 4. Worker validates the password against the configured secret
 5. Worker sets the signed session cookie and redirects to `/admin`
@@ -164,7 +185,7 @@ The old curl-oriented admin routes should no longer be the supported operator in
 
 1. Operator visits `/admin`
 2. Worker validates the session cookie
-3. Worker returns the dashboard shell
+3. Worker returns the dashboard HTML shell and React assets
 4. Client-side fetches load gateway status, config data, and guild blocklist data as needed
 
 ### Gateway control
@@ -208,10 +229,11 @@ Add focused coverage for:
 
 1. login success and failure
 2. session cookie validation and protected route gating
-3. dashboard API behavior for gateway status and start
-4. config reads and writes
-5. guild blocklist reads and mutations for a selected guild
-6. unauthorized responses for expired or missing sessions
+3. React login and dashboard rendering for the authenticated flow
+4. dashboard API behavior for gateway status and start
+5. config reads and writes
+6. guild blocklist reads and mutations for a selected guild
+7. unauthorized responses for expired or missing sessions
 
 Repository validation remains:
 
@@ -220,6 +242,7 @@ Repository validation remains:
 
 ## Notes
 
-- The first UI should stay intentionally plain and dependency-light.
+- The first UI should stay intentionally small even though it uses React.
+- `shadcn/ui` is chosen to avoid hand-rolling basic UI structure while still keeping the interface lightweight.
 - The browser becomes the normal operator interface for management work.
 - Slash commands remain useful for in-Discord server administration, but the new web UI replaces the old curl-based operator workflow.
