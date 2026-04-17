@@ -148,51 +148,40 @@ export default function App({ initialAuthenticated = false }: Props) {
     return (
       <main className="min-h-screen">
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-          <header className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-card/90 p-6 shadow-[0_32px_90px_-44px_rgba(5,10,25,1)] backdrop-blur sm:p-8">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.32em] text-primary/80">
-                    Operations Console
-                  </p>
-                  <div className="space-y-2">
-                    <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                      Admin Dashboard
-                    </h1>
-                    <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                      Monitor gateway health, review stored guild state, and manage moderation
-                      controls from a single dark workspace.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <SummaryChip
-                    label="Gateway"
-                    value={gatewayStatus?.status ?? "Loading"}
-                    tone={getStatusTone(gatewayStatus?.status ?? null)}
-                  />
-                  <SummaryChip
-                    label="Stored guilds"
-                    value={overview ? String(overview.guilds.length) : "-"}
-                  />
-                  <SummaryChip
-                    label="Timed roles"
-                    value={totalTimedRoles === null ? "-" : String(totalTimedRoles)}
-                  />
-                </div>
+          <header className="flex flex-col gap-4 rounded-lg border bg-card p-6 text-card-foreground shadow-sm lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <h1 className="text-3xl font-semibold tracking-tight">Admin Dashboard</h1>
+                <p className="max-w-2xl text-sm text-muted-foreground">
+                  Monitor gateway health, review stored guild state, and manage moderation controls.
+                </p>
               </div>
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={async () => {
-                  await fetch("/admin/logout", { method: "POST" });
-                  window.location.href = "/admin/login";
-                }}
-              >
-                Sign out
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                <SummaryChip
+                  label="Gateway"
+                  value={gatewayStatus?.status ?? "Loading"}
+                  tone={getStatusTone(gatewayStatus?.status ?? null)}
+                />
+                <SummaryChip
+                  label="Stored guilds"
+                  value={overview ? String(overview.guilds.length) : "-"}
+                />
+                <SummaryChip
+                  label="Timed roles"
+                  value={totalTimedRoles === null ? "-" : String(totalTimedRoles)}
+                />
+              </div>
             </div>
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={async () => {
+                await fetch("/admin/logout", { method: "POST" });
+                window.location.href = "/admin/login";
+              }}
+            >
+              Sign out
+            </Button>
           </header>
 
           <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
@@ -285,13 +274,10 @@ export default function App({ initialAuthenticated = false }: Props) {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4 sm:p-6">
-      <Card className="w-full max-w-md overflow-hidden">
+      <Card className="w-full max-w-md">
         <CardHeader>
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-primary/80">
-            Operations Console
-          </p>
           <CardTitle>Admin Login</CardTitle>
-          <p className="text-sm leading-6 text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Use the admin secret to access gateway controls, blocklists, and timed roles.
           </p>
         </CardHeader>
@@ -335,10 +321,8 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/15 bg-primary/10 px-4 py-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.28em] text-primary/80">
-          Current state
-        </span>
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+        <span className="text-xs font-medium text-muted-foreground">Current state</span>
         <StatusBadge status={status.status} />
         <p className="text-sm text-muted-foreground">
           {status.lastError
@@ -348,10 +332,8 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
       </div>
       <dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {details.map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-border/70 bg-background/55 p-4">
-            <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {label}
-            </dt>
+          <div key={label} className="rounded-lg border bg-background p-4">
+            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
             <dd className="mt-2 text-sm font-medium text-foreground">{value}</dd>
           </div>
         ))}
@@ -362,28 +344,26 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
 
 function GuildOverviewCard({ guild }: { guild: AdminOverviewGuild }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-background/55 p-4 space-y-4">
+    <div className="rounded-lg border bg-card p-4 space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/75">Guild</p>
+          <p className="text-xs font-medium text-muted-foreground">Guild</p>
           <h3 className="mt-2 text-lg font-semibold tracking-tight">{guild.guildId}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Stored moderation data for this server.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span className="rounded-full border border-border/70 bg-card/80 px-3 py-1 text-xs font-medium text-foreground">
+          <span className="rounded-md border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
             {guild.emojis.length} blocked emoji{guild.emojis.length === 1 ? "" : "s"}
           </span>
-          <span className="rounded-full border border-border/70 bg-card/80 px-3 py-1 text-xs font-medium text-foreground">
+          <span className="rounded-md border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
             {guild.timedRoles.length} timed role{guild.timedRoles.length === 1 ? "" : "s"}
           </span>
         </div>
       </div>
-      <div className="rounded-2xl border border-border/70 bg-card/50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          Blocked Emoji
-        </p>
+      <div className="rounded-md border bg-muted/30 p-4">
+        <p className="text-xs font-medium text-muted-foreground">Blocked Emoji</p>
         <p className="mt-2 text-sm text-muted-foreground">
           Blocked emojis: {guild.emojis.length === 0 ? "None" : guild.emojis.join(" ")}
         </p>
@@ -472,7 +452,7 @@ function BlocklistEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
             <Input id="bl-emoji" value={emoji} onChange={(e) => setEmoji(e.target.value)} />
           </FormField>
           <FormField label="Action">
-            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-border/70 bg-background/55 p-1.5">
+            <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-1.5">
               <Button
                 size="sm"
                 variant={action === "add" ? "default" : "outline"}
@@ -506,7 +486,7 @@ function BlocklistEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
         </EditorActions>
       </EditorPanel>
       {currentEmojis !== null && (
-        <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
+        <div className="rounded-lg border bg-background p-4">
           <p className="text-sm text-muted-foreground">
             {currentEmojis.length === 0
               ? "No emojis currently blocked in this guild."
@@ -515,7 +495,7 @@ function BlocklistEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
         </div>
       )}
       {result && (
-        <Alert className="border-primary/20 bg-primary/10">
+        <Alert>
           <AlertDescription>{result}</AlertDescription>
         </Alert>
       )}
@@ -689,7 +669,7 @@ function TimedRolesEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
       )}
 
       {message && (
-        <Alert className="border-primary/20 bg-primary/10">
+        <Alert>
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       )}
@@ -712,11 +692,7 @@ function SectionHeading({ title, description }: { title: string; description: st
 }
 
 function EditorPanel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="space-y-5 rounded-[1.75rem] border border-border/70 bg-background/30 p-5 lg:p-6">
-      {children}
-    </div>
-  );
+  return <div className="space-y-4 rounded-lg border bg-muted/30 p-4 md:p-6">{children}</div>;
 }
 
 function FormField({
@@ -729,11 +705,8 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 space-y-2.5">
-      <Label
-        htmlFor={htmlFor}
-        className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground"
-      >
+    <div className="min-w-0 space-y-2">
+      <Label htmlFor={htmlFor} className="text-sm font-medium leading-none">
         {label}
       </Label>
       {children}
@@ -742,11 +715,7 @@ function FormField({
 }
 
 function EditorActions({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-3 border-t border-border/70 pt-5 sm:flex-row sm:items-center sm:justify-end">
-      {children}
-    </div>
-  );
+  return <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:justify-end">{children}</div>;
 }
 
 function SummaryChip({
@@ -761,24 +730,21 @@ function SummaryChip({
   return (
     <div
       className={cn(
-        "min-w-[8.75rem] rounded-2xl border px-4 py-3",
-        tone === "success" && "border-emerald-400/20 bg-emerald-400/10",
-        tone === "warning" && "border-amber-400/20 bg-amber-400/10",
-        tone === "danger" && "border-destructive/25 bg-destructive/10",
-        tone === "neutral" && "border-border/70 bg-background/45"
+        "min-w-[8rem] rounded-md border bg-muted/40 px-3 py-2",
+        tone === "success" && "border-emerald-500/30 bg-emerald-500/10",
+        tone === "warning" && "border-amber-500/30 bg-amber-500/10",
+        tone === "danger" && "border-destructive/40 bg-destructive/10"
       )}
     >
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-2 text-sm font-semibold text-foreground">{value}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
+    <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
       {message}
     </div>
   );
@@ -790,11 +756,11 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em]",
-        tone === "success" && "border-emerald-400/25 bg-emerald-400/15 text-emerald-100",
-        tone === "warning" && "border-amber-400/25 bg-amber-400/15 text-amber-100",
-        tone === "danger" && "border-destructive/30 bg-destructive/15 text-rose-100",
-        tone === "neutral" && "border-border/70 bg-background/70 text-foreground"
+        "inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium",
+        tone === "success" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+        tone === "warning" && "border-amber-500/30 bg-amber-500/10 text-amber-100",
+        tone === "danger" && "border-destructive/40 bg-destructive/10 text-destructive-foreground",
+        tone === "neutral" && "border-border bg-muted/40 text-foreground"
       )}
     >
       {status}
