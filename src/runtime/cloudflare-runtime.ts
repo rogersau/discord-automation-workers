@@ -3,6 +3,7 @@ import { getModerationStoreStub } from "../reaction-moderation";
 import { assertValidDiscordPublicKey } from "../discord";
 import type { Env } from "../env";
 import type { AppConfigMutation } from "./admin-types";
+import type { TicketInstance, TicketPanelConfig } from "../types";
 
 export function createCloudflareRuntime(env: Env) {
   const discordPublicKey = assertValidDiscordPublicKey(env.DISCORD_PUBLIC_KEY);
@@ -39,6 +40,15 @@ export function createCloudflareRuntime(env: Env) {
         });
         return response.json();
       },
+      async readTicketPanelConfig() {
+        return null;
+      },
+      async upsertTicketPanelConfig(_panel: TicketPanelConfig) {},
+      async createTicketInstance(_instance: TicketInstance) {},
+      async readOpenTicketByChannel() {
+        return null;
+      },
+      async closeTicketInstance() {},
       async listTimedRolesByGuild(guildId) {
         const response = await storeStub.fetch(`https://moderation-store/timed-roles?guildId=${encodeURIComponent(guildId)}`);
         return response.json();
