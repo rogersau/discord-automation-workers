@@ -96,7 +96,10 @@ export class ModerationStoreDO implements DurableObject {
 
     if (request.method === "GET" && url.pathname === "/timed-roles") {
       try {
-        return Response.json(this.listTimedRolesByGuild(parseGuildId(url)));
+        const guildId = url.searchParams.get("guildId");
+        return Response.json(
+          guildId ? this.listTimedRolesByGuild(guildId) : this.listTimedRoles()
+        );
       } catch (error) {
         return this.errorResponse(error);
       }
@@ -246,6 +249,12 @@ export class ModerationStoreDO implements DurableObject {
     );
   }
 
+  private listTimedRoles(): TimedRoleAssignment[] {
+    return this.readTimedRoleSelections(
+      "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms, created_at_ms, updated_at_ms FROM timed_roles ORDER BY guild_id ASC, expires_at_ms ASC"
+    );
+  }
+
   private async scheduleNextTimedRoleAlarm(): Promise<void> {
     const nextRow = [
       ...this.sql.exec(
@@ -362,10 +371,6 @@ function parseTimedRoleRemoval(body: unknown): {
     userId: asRequiredString(body.userId, "userId"),
     roleId: asRequiredString(body.roleId, "roleId"),
   };
-}
-
-function parseGuildId(url: URL): string {
-  return asRequiredString(url.searchParams.get("guildId"), "guildId");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -9,6 +9,7 @@ import { createRuntimeApp } from "../src/runtime/app";
 import { createAdminSessionCookie } from "../src/runtime/admin-auth";
 import type { GatewayController, RuntimeStore } from "../src/runtime/contracts";
 import type { AppConfigMutation } from "../src/runtime/admin-types";
+import type { TimedRoleAssignment } from "../src/types";
 
 test("createRuntimeApp serves the admin login shell and static assets", async () => {
   const app = createRuntimeApp({
@@ -321,6 +322,260 @@ test("createRuntimeApp returns dashboard data and blocklist mutations through se
   );
   assert.equal(blocklistResponse.status, 200);
   assert.deepEqual(calls, ["config:bot_user_id:new-bot-id", "blocklist:guild-1:🚫:add"]);
+});
+
+test("createRuntimeApp exposes dashboard overview data for discoverability in the admin UI", async () => {
+  const timedRoles: TimedRoleAssignment[] = [
+    {
+      guildId: "guild-1",
+      userId: "user-1",
+      roleId: "role-1",
+      durationInput: "1h",
+      expiresAtMs: 3_600_000,
+    },
+    {
+      guildId: "guild-2",
+      userId: "user-2",
+      roleId: "role-2",
+      durationInput: "2h",
+      expiresAtMs: 7_200_000,
+    },
+  ];
+  const app = createRuntimeApp({
+    discordPublicKey: "a".repeat(64),
+    discordBotToken: "bot-token",
+    adminUiPassword: "let-me-in",
+    adminSessionSecret: "session-secret",
+    verifyDiscordRequest: async () => true,
+    store: {
+      async readConfig() {
+        return {
+          guilds: {
+            "guild-1": { enabled: true, emojis: ["✅", "🍎"] },
+            "guild-3": { enabled: true, emojis: ["🚫"] },
+          },
+          botUserId: "bot-user-id",
+        };
+      },
+      async listTimedRoles() {
+        return timedRoles;
+      },
+    } as unknown as RuntimeStore,
+    gateway: {
+      async status() {
+        return {
+          status: "ready",
+          sessionId: "session-123",
+          resumeGatewayUrl: "wss://resume.discord.gg/?v=10&encoding=json",
+          lastSequence: 99,
+          backoffAttempt: 0,
+          lastError: null,
+          heartbeatIntervalMs: 45_000,
+        };
+      },
+    } as GatewayController,
+  });
+
+  const cookie = await createAdminSessionCookie("session-secret");
+  const response = await app.fetch(
+    new Request("https://runtime.example/admin/api/overview", {
+      headers: { cookie },
+    })
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    gateway: {
+      status: "ready",
+      sessionId: "session-123",
+      resumeGatewayUrl: "wss://resume.discord.gg/?v=10&encoding=json",
+      lastSequence: 99,
+      backoffAttempt: 0,
+      lastError: null,
+      heartbeatIntervalMs: 45_000,
+    },
+    guilds: [
+      {
+        guildId: "guild-1",
+        emojis: ["✅", "🍎"],
+        timedRoles: [
+          {
+            guildId: "guild-1",
+            userId: "user-1",
+            roleId: "role-1",
+            durationInput: "1h",
+            expiresAtMs: 3_600_000,
+          },
+        ],
+      },
+      {
+        guildId: "guild-2",
+        emojis: [],
+        timedRoles: [
+          {
+            guildId: "guild-2",
+            userId: "user-2",
+            roleId: "role-2",
+            durationInput: "2h",
+            expiresAtMs: 7_200_000,
+          },
+        ],
+      },
+      {
+        guildId: "guild-3",
+        emojis: ["🚫"],
+        timedRoles: [],
+      },
+    ],
+  });
+});
+
+test("createRuntimeApp exposes timed-role admin APIs through session auth", async () => {
+  const calls: string[] = [];
+  const assignments: TimedRoleAssignment[] = [
+    {
+      guildId: "guild-1",
+      userId: "user-1",
+      roleId: "role-1",
+      durationInput: "1h",
+      expiresAtMs: 3_600_000,
+    },
+  ];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    calls.push(`${init?.method ?? "GET"}:${url}`);
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+
+  try {
+    const app = createRuntimeApp({
+      discordPublicKey: "a".repeat(64),
+      discordBotToken: "bot-token",
+      adminUiPassword: "let-me-in",
+      adminSessionSecret: "session-secret",
+      verifyDiscordRequest: async () => true,
+      store: {
+        async readConfig() {
+          return { guilds: {}, botUserId: "bot-user-id" };
+        },
+        async listTimedRolesByGuild(guildId: string) {
+          return assignments.filter((assignment) => assignment.guildId === guildId);
+        },
+        async upsertTimedRole(body: TimedRoleAssignment) {
+          assignments.push(body);
+        },
+        async deleteTimedRole(body: { guildId: string; userId: string; roleId: string }) {
+          const index = assignments.findIndex(
+            (assignment) =>
+              assignment.guildId === body.guildId &&
+              assignment.userId === body.userId &&
+              assignment.roleId === body.roleId
+          );
+          if (index >= 0) {
+            assignments.splice(index, 1);
+          }
+        },
+      } as unknown as RuntimeStore,
+      gateway: {} as GatewayController,
+    });
+
+    const cookie = await createAdminSessionCookie("session-secret");
+
+    const listResponse = await app.fetch(
+      new Request("https://runtime.example/admin/api/timed-roles?guildId=guild-1", {
+        headers: { cookie },
+      })
+    );
+    assert.equal(listResponse.status, 200);
+    assert.deepEqual(await listResponse.json(), { guildId: "guild-1", assignments });
+
+    const addResponse = await app.fetch(
+      new Request("https://runtime.example/admin/api/timed-roles", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "add",
+          guildId: "guild-1",
+          userId: "user-2",
+          roleId: "role-2",
+          duration: "2h",
+        }),
+      })
+    );
+    assert.equal(addResponse.status, 200);
+
+    const removeResponse = await app.fetch(
+      new Request("https://runtime.example/admin/api/timed-roles", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "remove",
+          guildId: "guild-1",
+          userId: "user-1",
+          roleId: "role-1",
+        }),
+      })
+    );
+    assert.equal(removeResponse.status, 200);
+    assert.deepEqual(
+      calls,
+      [
+        "PUT:https://discord.com/api/v10/guilds/guild-1/members/user-2/roles/role-2",
+        "DELETE:https://discord.com/api/v10/guilds/guild-1/members/user-1/roles/role-1",
+      ]
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createRuntimeApp rejects malformed POST /admin/api/timed-roles bodies with 400 JSON", async () => {
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    calls.push("discord");
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+
+  try {
+    const app = createRuntimeApp({
+      discordPublicKey: "a".repeat(64),
+      discordBotToken: "bot-token",
+      adminUiPassword: "let-me-in",
+      adminSessionSecret: "session-secret",
+      verifyDiscordRequest: async () => true,
+      store: {
+        async upsertTimedRole() {
+          calls.push("store:add");
+        },
+        async deleteTimedRole() {
+          calls.push("store:remove");
+        },
+      } as unknown as RuntimeStore,
+      gateway: {} as GatewayController,
+    });
+
+    const cookie = await createAdminSessionCookie("session-secret");
+    const response = await app.fetch(
+      new Request("https://runtime.example/admin/api/timed-roles", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "add",
+          guildId: "guild-1",
+          userId: "user-1",
+          roleId: "role-1",
+        }),
+      })
+    );
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "Missing duration for timed role add" });
+    assert.deepEqual(calls, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("createRuntimeApp rejects malformed POST /admin/api/config bodies with 400 JSON", async () => {

@@ -16,7 +16,7 @@ A Cloudflare-first suite of Discord automation workers built on **SQLite-backed 
 - **Signed `/interactions` endpoint** for Discord interactions
 - **Automatic slash command sync** before each bootstrap when `DISCORD_APPLICATION_ID` is set
 - **Automatic gateway bootstrap** on a scheduled trigger after deploy
-- **Protected Admin UI** at `/admin/login` and `/admin` for gateway status/bootstrap, app config edits, and guild blocklist management by guild ID
+- **Protected Admin UI** at `/admin/login` and `/admin` for gateway status/bootstrap, guild blocklist management, and timed-role management by guild ID
 - **No KV namespace setup** and no external reaction relay required
 
 The required setup is adding your Discord token, configuring the public Discord application values, and registering the Worker URL as the Discord interactions endpoint.
@@ -110,10 +110,11 @@ Open the admin dashboard:
 1. Visit `https://your-worker-url.workers.dev/admin/login`
 2. Sign in with the password you stored in `ADMIN_UI_PASSWORD`
 3. Use the dashboard to:
-   - check gateway status
+   - inspect the live gateway snapshot
    - trigger an immediate bootstrap/command sync
-   - edit app config values
+   - review stored guild blocklists and timed roles discovered from slash-command state
    - manage a guild blocklist by guild ID
+   - list/add/remove timed roles by guild ID
 
 The dashboard replaces ad-hoc `curl` commands as the supported operator surface for runtime administration.
 
@@ -165,9 +166,9 @@ For timed roles, the role must already exist and be configured in Discord; the b
 | GET | `/admin` | Render the authenticated admin dashboard |
 | GET | `/admin/gateway/status` | Legacy runtime endpoint used by the dashboard for gateway state |
 | POST | `/admin/gateway/start` | Legacy runtime endpoint used by the dashboard to force bootstrap |
-| GET/POST | `/admin/api/*` | Session-protected dashboard APIs for gateway, config, and guild blocklist operations |
+| GET/POST | `/admin/api/*` | Session-protected dashboard APIs for gateway, guild blocklist, and timed-role operations |
 
-Set `ADMIN_UI_PASSWORD` to enable the supported browser-based operator workflow. The dashboard is the supported interface for gateway status/bootstrap, app config edits, and guild blocklist management by guild ID. If `ADMIN_AUTH_SECRET` is configured, bearer auth still applies to the legacy `/admin/gateway/*` routes.
+Set `ADMIN_UI_PASSWORD` to enable the supported browser-based operator workflow. The dashboard is the supported interface for gateway status/bootstrap, reviewing stored guild state, guild blocklist management, and timed-role management by guild ID. If `ADMIN_AUTH_SECRET` is configured, bearer auth still applies to the legacy `/admin/gateway/*` routes.
 
 ## Run outside Cloudflare with Docker
 

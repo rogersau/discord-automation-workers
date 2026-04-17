@@ -41,6 +41,10 @@ export function createCloudflareRuntime(env: Env) {
         const response = await storeStub.fetch(`https://moderation-store/timed-roles?guildId=${encodeURIComponent(guildId)}`);
         return response.json();
       },
+      async listTimedRoles() {
+        const response = await storeStub.fetch("https://moderation-store/timed-roles");
+        return response.json();
+      },
       async upsertTimedRole(body) {
         const response = await storeStub.fetch("https://moderation-store/timed-role", {
           method: "POST",

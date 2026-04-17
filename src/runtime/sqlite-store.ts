@@ -101,6 +101,9 @@ export function createSqliteRuntimeStore(
   const selectTimedRolesByGuild = db.prepare(
     "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms FROM timed_roles WHERE guild_id = ? ORDER BY expires_at_ms ASC"
   );
+  const selectTimedRoles = db.prepare(
+    "SELECT guild_id, user_id, role_id, duration_input, expires_at_ms FROM timed_roles ORDER BY guild_id ASC, expires_at_ms ASC"
+  );
   const upsertTimedRoleStmt = db.prepare(`
     INSERT INTO timed_roles(guild_id, user_id, role_id, duration_input, expires_at_ms, created_at_ms, updated_at_ms)
     VALUES(?, ?, ?, ?, ?, ?, ?)
@@ -159,6 +162,18 @@ export function createSqliteRuntimeStore(
 
     async listTimedRolesByGuild(guildId: string): Promise<TimedRoleAssignment[]> {
       const rows = selectTimedRolesByGuild.all(guildId) as TimedRoleRowPartial[];
+
+      return rows.map((row) => ({
+        guildId: row.guild_id,
+        userId: row.user_id,
+        roleId: row.role_id,
+        durationInput: row.duration_input,
+        expiresAtMs: row.expires_at_ms,
+      }));
+    },
+
+    async listTimedRoles(): Promise<TimedRoleAssignment[]> {
+      const rows = selectTimedRoles.all() as TimedRoleRowPartial[];
 
       return rows.map((row) => ({
         guildId: row.guild_id,

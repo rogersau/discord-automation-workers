@@ -1,8 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  startGatewayStatusMonitor,
+  type GatewayStatusMonitor,
+} from "../admin-gateway-monitor";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./components/ui/table";
 
 interface GatewayStatus {
   status: string;
@@ -14,6 +26,25 @@ interface GatewayStatus {
   heartbeatIntervalMs: number | null;
 }
 
+interface TimedRoleAssignment {
+  guildId: string;
+  userId: string;
+  roleId: string;
+  durationInput: string;
+  expiresAtMs: number;
+}
+
+interface AdminOverviewGuild {
+  guildId: string;
+  emojis: string[];
+  timedRoles: TimedRoleAssignment[];
+}
+
+interface AdminOverview {
+  gateway: GatewayStatus;
+  guilds: AdminOverviewGuild[];
+}
+
 interface Props {
   initialAuthenticated?: boolean;
 }
@@ -23,14 +54,69 @@ export default function App({ initialAuthenticated = false }: Props) {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const gatewayMonitorRef = useRef<GatewayStatusMonitor | null>(null);
+
+  const loadOverview = useCallback(async () => {
+    try {
+      const nextOverview = await readJsonOrThrow<AdminOverview>("/admin/api/overview");
+      setOverview(nextOverview);
+      setOverviewError(null);
+      setGatewayStatus(nextOverview.gateway);
+      setGatewayError(null);
+    } catch (error) {
+      setOverviewError(describeError(error));
+    }
+  }, []);
 
   useEffect(() => {
-    if (!authenticated) return;
-    fetch("/admin/api/gateway/status")
-      .then((r) => r.json())
-      .then(setGatewayStatus)
-      .catch(console.error);
-  }, [authenticated]);
+    if (!authenticated) {
+      gatewayMonitorRef.current = null;
+      setGatewayStatus(null);
+      setOverview(null);
+      setGatewayError(null);
+      setOverviewError(null);
+      return;
+    }
+
+    let cancelled = false;
+    void loadOverview().catch(() => undefined);
+
+    const monitor = startGatewayStatusMonitor({
+      intervalMs: 2000,
+      loadStatus() {
+        return readJsonOrThrow<GatewayStatus>("/admin/api/gateway/status");
+      },
+      onStatus(status) {
+        if (cancelled) {
+          return;
+        }
+        setGatewayStatus(status);
+        setGatewayError(null);
+      },
+      onError(error) {
+        if (cancelled) {
+          return;
+        }
+        setGatewayError(describeError(error));
+      },
+      setInterval(callback, delayMs) {
+        return window.setInterval(callback, delayMs);
+      },
+      clearInterval(timer) {
+        window.clearInterval(timer as number);
+      },
+    });
+    gatewayMonitorRef.current = monitor;
+
+    return () => {
+      cancelled = true;
+      gatewayMonitorRef.current = null;
+      monitor.stop();
+    };
+  }, [authenticated, loadOverview]);
 
   async function handleLogin() {
     setLoginError(false);
@@ -48,11 +134,8 @@ export default function App({ initialAuthenticated = false }: Props) {
   }
 
   async function handleGatewayStart() {
-    const res = await fetch("/admin/api/gateway/start", { method: "POST" });
-    if (res.ok) {
-      const data: GatewayStatus = await res.json();
-      setGatewayStatus(data);
-    }
+    await readJsonOrThrow("/admin/api/gateway/start", { method: "POST" });
+    await Promise.all([gatewayMonitorRef.current?.refresh(), loadOverview()]);
   }
 
   if (authenticated) {
@@ -74,22 +157,43 @@ export default function App({ initialAuthenticated = false }: Props) {
         <section>
           <h2 className="text-xl font-semibold mb-2">Gateway</h2>
           <Card>
-            <CardContent className="pt-4 space-y-2">
+            <CardContent className="pt-4 space-y-4">
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" onClick={handleGatewayStart}>Start gateway</Button>
+                <Button size="sm" variant="outline" onClick={() => void loadOverview()}>
+                  Refresh dashboard
+                </Button>
+              </div>
+              {gatewayError && <p className="text-sm text-red-600">{gatewayError}</p>}
               {gatewayStatus ? (
-                <p>Status: <strong>{gatewayStatus.status}</strong></p>
+                <GatewayDetails status={gatewayStatus} />
               ) : (
                 <p>Loading gateway status…</p>
               )}
-              <Button size="sm" onClick={handleGatewayStart}>Start gateway</Button>
             </CardContent>
           </Card>
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold mb-2">Config</h2>
+          <h2 className="text-xl font-semibold mb-2">Stored Server Data</h2>
           <Card>
-            <CardContent className="pt-4">
-              <ConfigEditor />
+            <CardContent className="pt-4 space-y-4">
+              {overviewError && <p className="text-sm text-red-600">{overviewError}</p>}
+              {overview ? (
+                overview.guilds.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No blocklists or timed roles are stored yet.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {overview.guilds.map((guild) => (
+                      <GuildOverviewCard key={guild.guildId} guild={guild} />
+                    ))}
+                  </div>
+                )
+              ) : (
+                <p>Loading stored server data…</p>
+              )}
             </CardContent>
           </Card>
         </section>
@@ -98,7 +202,16 @@ export default function App({ initialAuthenticated = false }: Props) {
           <h2 className="text-xl font-semibold mb-2">Blocklist</h2>
           <Card>
             <CardContent className="pt-4">
-              <BlocklistEditor />
+              <BlocklistEditor onUpdated={loadOverview} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mb-2">Timed Roles</h2>
+          <Card>
+            <CardContent className="pt-4">
+              <TimedRolesEditor onUpdated={loadOverview} />
             </CardContent>
           </Card>
         </section>
@@ -138,58 +251,70 @@ export default function App({ initialAuthenticated = false }: Props) {
   );
 }
 
-function ConfigEditor() {
-  const [key, setKey] = useState("bot_user_id");
-  const [value, setValue] = useState("");
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    fetch("/admin/api/config")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data: { botUserId?: string } | null) => {
-        if (data?.botUserId) setValue(data.botUserId);
-      })
-      .catch(console.error);
-  }, []);
-
-  async function handleSave() {
-    const res = await fetch("/admin/api/config", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key, value }),
-    });
-    if (res.ok) setSaved(true);
-  }
-
+function GatewayDetails({ status }: { status: GatewayStatus }) {
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2 items-end">
-        <div className="space-y-1 flex-1">
-          <Label htmlFor="config-key">Key</Label>
-          <Input id="config-key" value={key} onChange={(e) => { setKey(e.target.value); setSaved(false); }} />
-        </div>
-        <div className="space-y-1 flex-1">
-          <Label htmlFor="config-value">Value</Label>
-          <Input id="config-value" value={value} onChange={(e) => { setValue(e.target.value); setSaved(false); }} />
-        </div>
-        <Button size="sm" onClick={handleSave}>Save</Button>
-      </div>
-      {saved && <p className="text-sm text-green-600">Saved.</p>}
+    <div className="grid gap-2 text-sm">
+      <p>Status: <strong>{status.status}</strong></p>
+      <p>Session ID: {status.sessionId ?? "Not established"}</p>
+      <p>Last sequence: {status.lastSequence ?? "None"}</p>
+      <p>Heartbeat interval: {formatHeartbeatInterval(status.heartbeatIntervalMs)}</p>
+      <p>Backoff attempt: {status.backoffAttempt}</p>
+      <p>Resume URL: {status.resumeGatewayUrl ?? "Default gateway URL"}</p>
+      <p>Last error: {status.lastError ?? "None"}</p>
     </div>
   );
 }
 
-function BlocklistEditor() {
+function GuildOverviewCard({ guild }: { guild: AdminOverviewGuild }) {
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold">{guild.guildId}</h3>
+        <p className="text-sm text-muted-foreground">
+          Blocked emojis: {guild.emojis.length === 0 ? "None" : guild.emojis.join(" ")}
+        </p>
+      </div>
+      {guild.timedRoles.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No timed roles are active in this guild.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>User</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Duration</TableHead>
+              <TableHead>Expires</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {guild.timedRoles.map((assignment) => (
+              <TableRow key={`${assignment.guildId}:${assignment.userId}:${assignment.roleId}`}>
+                <TableCell>{assignment.userId}</TableCell>
+                <TableCell>{assignment.roleId}</TableCell>
+                <TableCell>{assignment.durationInput}</TableCell>
+                <TableCell>{new Date(assignment.expiresAtMs).toLocaleString()}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+function BlocklistEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
   const [guildId, setGuildId] = useState("");
   const [emoji, setEmoji] = useState("");
   const [action, setAction] = useState<"add" | "remove">("add");
   const [currentEmojis, setCurrentEmojis] = useState<string[] | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const trimmedGuildId = guildId.trim();
 
   async function loadBlocklist(id: string) {
-    if (!id.trim()) { setCurrentEmojis(null); return; }
+    const normalizedGuildId = id.trim();
+    if (!normalizedGuildId) { setCurrentEmojis(null); return; }
     try {
-      const res = await fetch(`/admin/api/blocklist?guildId=${encodeURIComponent(id)}`);
+      const res = await fetch(`/admin/api/blocklist?guildId=${encodeURIComponent(normalizedGuildId)}`);
       if (res.ok) {
         const data = await res.json() as { emojis: string[] };
         setCurrentEmojis(data.emojis);
@@ -209,6 +334,7 @@ function BlocklistEditor() {
       const data = await res.json() as { guilds: Record<string, { emojis: string[] }> };
       setCurrentEmojis(data.guilds?.[guildId]?.emojis ?? null);
       setResult(`${action === "add" ? "Blocked" : "Unblocked"} ${emoji} in ${guildId}`);
+      await onUpdated();
     }
   }
 
@@ -221,7 +347,11 @@ function BlocklistEditor() {
             id="bl-guild"
             value={guildId}
             onChange={(e) => { setGuildId(e.target.value); setCurrentEmojis(null); }}
-            onBlur={(e) => loadBlocklist(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                void loadBlocklist(guildId);
+              }
+            }}
           />
         </div>
         <div className="space-y-1">
@@ -235,6 +365,7 @@ function BlocklistEditor() {
             <Button size="sm" variant={action === "remove" ? "default" : "outline"} onClick={() => setAction("remove")}>Remove</Button>
           </div>
         </div>
+        <Button size="sm" variant="outline" disabled={!trimmedGuildId} onClick={() => void loadBlocklist(guildId)}>Load blocklist</Button>
         <Button size="sm" onClick={handleSubmit}>Apply</Button>
       </div>
       {currentEmojis !== null && (
@@ -247,4 +378,187 @@ function BlocklistEditor() {
       {result && <p className="text-sm">{result}</p>}
     </div>
   );
+}
+
+function TimedRolesEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
+  const [guildId, setGuildId] = useState("");
+  const [userId, setUserId] = useState("");
+  const [roleId, setRoleId] = useState("");
+  const [duration, setDuration] = useState("1h");
+  const [assignments, setAssignments] = useState<TimedRoleAssignment[] | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const trimmedGuildId = guildId.trim();
+
+  async function loadAssignments(nextGuildId: string) {
+    const trimmedGuildId = nextGuildId.trim();
+    setMessage(null);
+    setError(null);
+
+    if (!trimmedGuildId) {
+      setAssignments(null);
+      return;
+    }
+
+    const res = await fetch(`/admin/api/timed-roles?guildId=${encodeURIComponent(trimmedGuildId)}`);
+    if (!res.ok) {
+      setError("Failed to load timed roles.");
+      return;
+    }
+
+    const data = await res.json() as { assignments: TimedRoleAssignment[] };
+    setAssignments(data.assignments);
+  }
+
+  async function handleAdd() {
+    setMessage(null);
+    setError(null);
+
+    const res = await fetch("/admin/api/timed-roles", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "add",
+        guildId,
+        userId,
+        roleId,
+        duration,
+      }),
+    });
+
+    const data = await res.json() as { assignments?: TimedRoleAssignment[]; error?: string };
+    if (!res.ok) {
+      setError(data.error ?? "Failed to add the timed role.");
+      return;
+    }
+
+    setAssignments(data.assignments ?? []);
+    setMessage(`Assigned ${roleId} to ${userId} for ${duration}.`);
+    await onUpdated();
+  }
+
+  async function handleRemove(assignment: TimedRoleAssignment) {
+    setMessage(null);
+    setError(null);
+
+    const res = await fetch("/admin/api/timed-roles", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "remove",
+        guildId: assignment.guildId,
+        userId: assignment.userId,
+        roleId: assignment.roleId,
+      }),
+    });
+
+    const data = await res.json() as { assignments?: TimedRoleAssignment[]; error?: string };
+    if (!res.ok) {
+      setError(data.error ?? "Failed to remove the timed role.");
+      return;
+    }
+
+    setAssignments(data.assignments ?? []);
+    setMessage(`Removed ${assignment.roleId} from ${assignment.userId}.`);
+    await onUpdated();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 items-end flex-wrap">
+        <div className="space-y-1">
+          <Label htmlFor="tr-guild">Guild ID</Label>
+          <Input
+            id="tr-guild"
+            value={guildId}
+            onChange={(e) => {
+              setGuildId(e.target.value);
+              setAssignments(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                void loadAssignments(guildId);
+              }
+            }}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="tr-user">User ID</Label>
+          <Input id="tr-user" value={userId} onChange={(e) => setUserId(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="tr-role">Role ID</Label>
+          <Input id="tr-role" value={roleId} onChange={(e) => setRoleId(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="tr-duration">Duration</Label>
+          <Input id="tr-duration" value={duration} onChange={(e) => setDuration(e.target.value)} />
+        </div>
+        <Button size="sm" variant="outline" disabled={!trimmedGuildId} onClick={() => void loadAssignments(guildId)}>Load timed roles</Button>
+        <Button size="sm" onClick={() => void handleAdd()}>Add timed role</Button>
+      </div>
+
+      {assignments !== null && (
+        assignments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No timed roles are active in this guild.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {assignments.map((assignment) => (
+                <TableRow key={`${assignment.guildId}:${assignment.userId}:${assignment.roleId}`}>
+                  <TableCell>{assignment.userId}</TableCell>
+                  <TableCell>{assignment.roleId}</TableCell>
+                  <TableCell>{assignment.durationInput}</TableCell>
+                  <TableCell>{new Date(assignment.expiresAtMs).toLocaleString()}</TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleRemove(assignment)}
+                    >
+                      Remove
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )
+      )}
+
+      {message && <p className="text-sm text-green-600">{message}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+async function readJsonOrThrow<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    const message = (await response.text()) || `${response.status} ${response.statusText}`;
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : "Unexpected dashboard error";
+}
+
+function formatHeartbeatInterval(intervalMs: number | null): string {
+  if (intervalMs === null) {
+    return "Unknown";
+  }
+
+  return `${Math.round(intervalMs / 1000)}s`;
 }

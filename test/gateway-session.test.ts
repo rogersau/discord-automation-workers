@@ -81,6 +81,33 @@ test("GatewaySessionDO sends identify and schedules heartbeat after HELLO", asyn
   }
 });
 
+test("GatewaySessionDO reports heartbeat interval in its public status snapshot", async () => {
+  const { state } = createGatewayState();
+  const { restore, sockets } = installFakeWebSocket();
+
+  try {
+    const gateway = new GatewaySessionDO(
+      state,
+      { DISCORD_BOT_TOKEN: "bot-token" } as never
+    );
+    await gateway.fetch(new Request("https://gateway-session/start", { method: "POST" }));
+
+    await sockets[0]?.emitMessage({
+      op: 10,
+      t: null,
+      s: null,
+      d: { heartbeat_interval: 45_000 },
+    });
+
+    const response = await gateway.fetch(new Request("https://gateway-session/status"));
+    const status = (await response.json()) as Record<string, unknown>;
+
+    assert.equal(status.heartbeatIntervalMs, 45_000);
+  } finally {
+    restore();
+  }
+});
+
 test("GatewaySessionDO ignores HELLO frames when the socket is no longer open", async () => {
   const { state, alarms } = createGatewayState();
   const { restore, sockets } = installFakeWebSocket();
@@ -440,6 +467,132 @@ test("GatewaySessionDO unexpected close events enter backoff and reconnect on al
   }
 });
 
+test("GatewaySessionDO ignores stale close events from an old socket", async () => {
+  const clock = mockDateNow(40_000);
+  const { state, alarms } = createGatewayState({
+    session_id: "session-1",
+    resume_gateway_url: "wss://resume.discord.gg/?v=10&encoding=json",
+    last_sequence: "9",
+  });
+  const { restore, sockets } = installFakeWebSocket();
+
+  try {
+    const gateway = new GatewaySessionDO(
+      state,
+      { DISCORD_BOT_TOKEN: "bot-token" } as never
+    );
+    await gateway.fetch(new Request("https://gateway-session/start", { method: "POST" }));
+    await sockets[0]?.emitMessage({
+      op: 9,
+      t: null,
+      s: null,
+      d: true,
+    });
+
+    assert.deepEqual(alarms, [41_000]);
+
+    clock.set(41_000);
+    await gateway.alarm();
+    assert.equal(sockets.length, 2, "alarm should open a replacement websocket");
+
+    await sockets[0]?.emitClose();
+
+    const response = await gateway.fetch(new Request("https://gateway-session/status"));
+    const status = (await response.json()) as Record<string, unknown>;
+
+    assert.equal(status.status, "resuming");
+    assert.equal(status.backoffAttempt, 1);
+    assert.deepEqual(alarms, [41_000]);
+  } finally {
+    restore();
+    clock.restore();
+  }
+});
+
+test("GatewaySessionDO ignores stale HELLO messages from an old socket after reconnect", async () => {
+  const clock = mockDateNow(50_000);
+  const { state, alarms } = createGatewayState({
+    session_id: "session-1",
+    resume_gateway_url: "wss://resume.discord.gg/?v=10&encoding=json",
+    last_sequence: "9",
+  });
+  const { restore, sockets } = installFakeWebSocket();
+
+  try {
+    const gateway = new GatewaySessionDO(
+      state,
+      { DISCORD_BOT_TOKEN: "bot-token" } as never
+    );
+    await gateway.fetch(new Request("https://gateway-session/start", { method: "POST" }));
+    await sockets[0]?.emitMessage({
+      op: 9,
+      t: null,
+      s: null,
+      d: true,
+    });
+
+    clock.set(51_000);
+    await gateway.alarm();
+    assert.equal(sockets.length, 2, "alarm should open a replacement websocket");
+
+    await sockets[0]?.emitMessage({
+      op: 10,
+      t: null,
+      s: null,
+      d: { heartbeat_interval: 45_000 },
+    });
+
+    assert.deepEqual(
+      sockets[1]?.sent,
+      [],
+      "stale HELLO from the old socket should not drive the active websocket"
+    );
+    assert.deepEqual(alarms, [51_000]);
+  } finally {
+    restore();
+    clock.restore();
+  }
+});
+
+test("GatewaySessionDO ignores stale error events from an old socket after reconnect", async () => {
+  const clock = mockDateNow(60_000);
+  const { state } = createGatewayState({
+    session_id: "session-1",
+    resume_gateway_url: "wss://resume.discord.gg/?v=10&encoding=json",
+    last_sequence: "9",
+  });
+  const { restore, sockets } = installFakeWebSocket();
+
+  try {
+    const gateway = new GatewaySessionDO(
+      state,
+      { DISCORD_BOT_TOKEN: "bot-token" } as never
+    );
+    await gateway.fetch(new Request("https://gateway-session/start", { method: "POST" }));
+    await sockets[0]?.emitMessage({
+      op: 9,
+      t: null,
+      s: null,
+      d: true,
+    });
+
+    clock.set(61_000);
+    await gateway.alarm();
+    const statusBeforeError = (await gateway.fetch(new Request("https://gateway-session/status")));
+    const previous = (await statusBeforeError.json()) as Record<string, unknown>;
+
+    await sockets[0]?.emitError();
+
+    const statusAfterError = await gateway.fetch(new Request("https://gateway-session/status"));
+    const current = (await statusAfterError.json()) as Record<string, unknown>;
+
+    assert.equal(current.lastError, previous.lastError);
+  } finally {
+    restore();
+    clock.restore();
+  }
+});
+
 function createGatewayState(initialValues?: Record<string, string>) {
   const stateMap = new Map<string, string>(Object.entries(initialValues ?? {}));
   const alarms: number[] = [];
@@ -574,6 +727,12 @@ function installFakeWebSocket() {
     async emitClose() {
       this.readyState = FakeWebSocket.CLOSED;
       for (const listener of this.listeners.get("close") ?? []) {
+        await listener({});
+      }
+    }
+
+    async emitError() {
+      for (const listener of this.listeners.get("error") ?? []) {
         await listener({});
       }
     }

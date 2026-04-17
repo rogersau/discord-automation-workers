@@ -101,12 +101,16 @@ export class GatewaySessionDO implements DurableObject {
       this.snapshot.resumeGatewayUrl ?? DEFAULT_GATEWAY_URL
     );
     socket.addEventListener("message", async (event) => {
+      if (this.socket !== socket) {
+        return;
+      }
       await this.handleSocketMessage(event);
     });
     socket.addEventListener("close", () => {
-      if (this.socket === socket) {
-        this.socket = null;
+      if (this.socket !== socket) {
+        return;
       }
+      this.socket = null;
 
       if (this.snapshot.status === "idle" || this.snapshot.status === "backoff") {
         return;
@@ -115,6 +119,9 @@ export class GatewaySessionDO implements DurableObject {
       void this.enterBackoff();
     });
     socket.addEventListener("error", () => {
+      if (this.socket !== socket) {
+        return;
+      }
       this.snapshot.lastError = "Gateway websocket error";
       this.persistValue("last_error", this.snapshot.lastError);
     });
@@ -264,6 +271,7 @@ export class GatewaySessionDO implements DurableObject {
       lastSequence: this.snapshot.lastSequence,
       backoffAttempt: this.snapshot.backoffAttempt,
       lastError: this.snapshot.lastError,
+      heartbeatIntervalMs: this.snapshot.heartbeatIntervalMs,
     };
   }
 

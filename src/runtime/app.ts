@@ -21,6 +21,7 @@ import {
 } from "../discord-interactions";
 import { formatTimedRoleExpiry, parseTimedRoleDuration } from "../timed-roles";
 import type { GatewayController, RuntimeStore } from "./contracts";
+import type { BlocklistConfig, TimedRoleAssignment } from "../types";
 
 const DISCORD_INTERACTION_MAX_AGE_SECONDS = 5 * 60;
 const DISCORD_MESSAGE_CONTENT_LIMIT = 2_000;
@@ -47,6 +48,12 @@ interface RuntimeAppOptions {
 }
 
 class AdminApiInputError extends Error {}
+
+interface AdminOverviewGuild {
+  guildId: string;
+  emojis: string[];
+  timedRoles: TimedRoleAssignment[];
+}
 
 export function createRuntimeApp(options: RuntimeAppOptions) {
   return {
@@ -123,6 +130,19 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
           return Response.json(await bootstrap());
         }
 
+        if (request.method === "GET" && url.pathname === "/admin/api/overview") {
+          const [gateway, config, timedRoles] = await Promise.all([
+            options.gateway.status(),
+            options.store.readConfig(),
+            options.store.listTimedRoles(),
+          ]);
+
+          return Response.json({
+            gateway,
+            guilds: buildAdminOverviewGuilds(config, timedRoles),
+          });
+        }
+
         if (request.method === "GET" && url.pathname === "/admin/api/config") {
           const config = await options.store.readConfig();
           return Response.json({ botUserId: config.botUserId });
@@ -158,6 +178,87 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
           return Response.json(config);
         }
 
+        if (request.method === "GET" && url.pathname === "/admin/api/timed-roles") {
+          const guildId = url.searchParams.get("guildId");
+          if (!guildId) {
+            return Response.json({ error: "guildId is required" }, { status: 400 });
+          }
+
+          return Response.json({
+            guildId,
+            assignments: await options.store.listTimedRolesByGuild(guildId),
+          });
+        }
+
+        if (request.method === "POST" && url.pathname === "/admin/api/timed-roles") {
+          const parsedBody = await parseJsonBody(request, parseTimedRoleAdminMutation);
+          if (!parsedBody.ok) {
+            return parsedBody.response;
+          }
+
+          if (parsedBody.value.action === "add") {
+            const parsedDuration = parseTimedRoleDuration(parsedBody.value.duration, Date.now());
+            if (!parsedDuration) {
+              return Response.json(
+                { error: "Invalid duration. Use values like 1h, 1w, or 1m." },
+                { status: 400 }
+              );
+            }
+
+            await options.store.upsertTimedRole({
+              guildId: parsedBody.value.guildId,
+              userId: parsedBody.value.userId,
+              roleId: parsedBody.value.roleId,
+              durationInput: parsedDuration.durationInput,
+              expiresAtMs: parsedDuration.expiresAtMs,
+            });
+
+            try {
+              await addGuildMemberRole(
+                parsedBody.value.guildId,
+                parsedBody.value.userId,
+                parsedBody.value.roleId,
+                options.discordBotToken
+              );
+            } catch (error) {
+              await options.store.deleteTimedRole({
+                guildId: parsedBody.value.guildId,
+                userId: parsedBody.value.userId,
+                roleId: parsedBody.value.roleId,
+              });
+              return Response.json(
+                { error: describeTimedRoleAssignmentFailure(error) },
+                { status: 502 }
+              );
+            }
+          } else {
+            try {
+              await removeGuildMemberRole(
+                parsedBody.value.guildId,
+                parsedBody.value.userId,
+                parsedBody.value.roleId,
+                options.discordBotToken
+              );
+            } catch (error) {
+              return Response.json(
+                { error: describeTimedRoleRemovalFailure(error) },
+                { status: 502 }
+              );
+            }
+
+            await options.store.deleteTimedRole({
+              guildId: parsedBody.value.guildId,
+              userId: parsedBody.value.userId,
+              roleId: parsedBody.value.roleId,
+            });
+          }
+
+          return Response.json({
+            guildId: parsedBody.value.guildId,
+            assignments: await options.store.listTimedRolesByGuild(parsedBody.value.guildId),
+          });
+        }
+
         return Response.json({ error: "Not found" }, { status: 404 });
       }
 
@@ -180,6 +281,37 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
     }
     return options.gateway.start();
   }
+}
+
+function buildAdminOverviewGuilds(
+  config: BlocklistConfig,
+  timedRoles: TimedRoleAssignment[]
+): AdminOverviewGuild[] {
+  const guilds = new Map<string, AdminOverviewGuild>();
+
+  for (const [guildId, guildConfig] of Object.entries(config.guilds)) {
+    guilds.set(guildId, {
+      guildId,
+      emojis: [...guildConfig.emojis],
+      timedRoles: [],
+    });
+  }
+
+  for (const timedRole of timedRoles) {
+    const existing = guilds.get(timedRole.guildId);
+    if (existing) {
+      existing.timedRoles.push(timedRole);
+      continue;
+    }
+
+    guilds.set(timedRole.guildId, {
+      guildId: timedRole.guildId,
+      emojis: [],
+      timedRoles: [timedRole],
+    });
+  }
+
+  return [...guilds.values()].sort((left, right) => left.guildId.localeCompare(right.guildId));
 }
 
 function renderAdminShell(authenticated = false): Response {
@@ -584,6 +716,40 @@ function parseGuildEmojiMutation(
   };
 }
 
+function parseTimedRoleAdminMutation(
+  body: unknown
+):
+  | { action: "add"; guildId: string; userId: string; roleId: string; duration: string }
+  | { action: "remove"; guildId: string; userId: string; roleId: string } {
+  if (!isRecord(body)) {
+    throw new AdminApiInputError("Invalid JSON body");
+  }
+
+  const guildId = asOptionalString(body.guildId);
+  const userId = asOptionalString(body.userId);
+  const roleId = asOptionalString(body.roleId);
+  const action = body.action;
+
+  if (!guildId || !userId || !roleId || typeof action !== "string") {
+    throw new AdminApiInputError("Missing guildId, userId, roleId or action");
+  }
+
+  if (action === "add") {
+    const duration = asOptionalString(body.duration);
+    if (!duration) {
+      throw new AdminApiInputError("Missing duration for timed role add");
+    }
+
+    return { action, guildId, userId, roleId, duration };
+  }
+
+  if (action === "remove") {
+    return { action, guildId, userId, roleId };
+  }
+
+  throw new AdminApiInputError("Invalid action. Use 'add' or 'remove'");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -610,6 +776,26 @@ function describeTimedRoleAssignmentFailure(error: unknown): string {
   }
 
   return `Failed to assign the timed role (${error.status}).`;
+}
+
+function describeTimedRoleRemovalFailure(error: unknown): string {
+  if (!(error instanceof DiscordApiError)) {
+    return "Failed to remove the timed role.";
+  }
+
+  if (error.status === 403) {
+    return "Failed to remove the timed role. Ensure the bot has Manage Roles and that its highest role is above the target role.";
+  }
+
+  if (error.status === 404) {
+    return "Failed to remove the timed role. The member or role could not be found in this server.";
+  }
+
+  if (error.status >= 500) {
+    return "Failed to remove the timed role because Discord is currently unavailable.";
+  }
+
+  return `Failed to remove the timed role (${error.status}).`;
 }
 
 function formatBoundedBulletList(
