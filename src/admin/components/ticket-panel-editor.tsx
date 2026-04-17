@@ -92,6 +92,7 @@ export function TicketPanelEditor({
             value={value.categoryChannelId}
             onChange={(e) => onChange({ ...value, categoryChannelId: e.target.value })}
           >
+            <option value="">— select a category —</option>
             {value.categoryChannelId && !guildResources.categories.find((c) => c.id === value.categoryChannelId) && (
               <option value={value.categoryChannelId}>{value.categoryChannelId}</option>
             )}
@@ -114,6 +115,7 @@ export function TicketPanelEditor({
             value={value.transcriptChannelId}
             onChange={(e) => onChange({ ...value, transcriptChannelId: e.target.value })}
           >
+            <option value="">— select a channel —</option>
             {value.transcriptChannelId && !guildResources.textChannels.find((c) => c.id === value.transcriptChannelId) && (
               <option value={value.transcriptChannelId}>{value.transcriptChannelId}</option>
             )}

@@ -701,6 +701,7 @@ function TicketPanelsEditor() {
   const [guildResources, setGuildResources] = useState<GuildResources | null>(null);
   const [panelConfig, setPanelConfig] = useState<TicketPanelConfig | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const trimmedGuildId = guildId.trim();
 
   async function loadResources(id: string) {
@@ -710,6 +711,7 @@ function TicketPanelsEditor() {
       setPanelConfig(null);
       return;
     }
+    setLoading(true);
     try {
       setLoadError(null);
       const [resourcesRes, panelRes] = await Promise.all([
@@ -737,6 +739,8 @@ function TicketPanelsEditor() {
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load guild data.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -781,7 +785,7 @@ function TicketPanelsEditor() {
                 setPanelConfig(null);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !loading) {
                   void loadResources(guildId);
                 }
               }}
@@ -794,10 +798,10 @@ function TicketPanelsEditor() {
             size="sm"
             variant="outline"
             className="w-full sm:w-auto sm:min-w-[14rem]"
-            disabled={!trimmedGuildId}
+            disabled={!trimmedGuildId || loading}
             onClick={() => void loadResources(guildId)}
           >
-            Load ticket panel
+            {loading ? "Loading…" : "Load ticket panel"}
           </Button>
         </div>
       </div>
