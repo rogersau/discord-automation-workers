@@ -40,15 +40,45 @@ export function createCloudflareRuntime(env: Env) {
         });
         return response.json();
       },
-      async readTicketPanelConfig() {
-        return null;
+      async readTicketPanelConfig(guildId) {
+        const response = await storeStub.fetch(
+          `https://moderation-store/ticket-panel?guildId=${encodeURIComponent(guildId)}`
+        );
+        return response.json();
       },
-      async upsertTicketPanelConfig(_panel: TicketPanelConfig) {},
-      async createTicketInstance(_instance: TicketInstance) {},
-      async readOpenTicketByChannel() {
-        return null;
+      async upsertTicketPanelConfig(panel: TicketPanelConfig) {
+        const response = await storeStub.fetch("https://moderation-store/ticket-panel", {
+          method: "POST",
+          body: JSON.stringify(panel),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to upsert ticket panel: ${response.status} ${await response.text()}`);
+        }
       },
-      async closeTicketInstance() {},
+      async createTicketInstance(instance: TicketInstance) {
+        const response = await storeStub.fetch("https://moderation-store/ticket-instance", {
+          method: "POST",
+          body: JSON.stringify(instance),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to create ticket instance: ${response.status} ${await response.text()}`);
+        }
+      },
+      async readOpenTicketByChannel(guildId, channelId) {
+        const response = await storeStub.fetch(
+          `https://moderation-store/ticket-instance/open?guildId=${encodeURIComponent(guildId)}&channelId=${encodeURIComponent(channelId)}`
+        );
+        return response.json();
+      },
+      async closeTicketInstance(body) {
+        const response = await storeStub.fetch("https://moderation-store/ticket-instance/close", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to close ticket instance: ${response.status} ${await response.text()}`);
+        }
+      },
       async listTimedRolesByGuild(guildId) {
         const response = await storeStub.fetch(`https://moderation-store/timed-roles?guildId=${encodeURIComponent(guildId)}`);
         return response.json();
