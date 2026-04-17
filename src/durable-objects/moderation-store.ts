@@ -352,20 +352,18 @@ export class ModerationStoreDO implements DurableObject {
     closedAtMs: number;
     transcriptMessageId: string | null;
   }): Promise<void> {
-    const existing = await this.readOpenTicketByChannel(body.guildId, body.channelId);
-
-    if (!existing) {
-      throw new Error(`No open ticket found for guild ${body.guildId} channel ${body.channelId}`);
-    }
-
-    this.sql.exec(
+    const result = this.sql.exec(
       "UPDATE ticket_instances SET status = 'closed', closed_by_user_id = ?, closed_at_ms = ?, transcript_message_id = ? WHERE guild_id = ? AND channel_id = ? AND status = 'open'",
       body.closedByUserId,
       body.closedAtMs,
       body.transcriptMessageId,
       body.guildId,
       body.channelId
-    );
+    ) as { changes?: number };
+
+    if (!result.changes) {
+      throw new Error(`No open ticket found for guild ${body.guildId} channel ${body.channelId}`);
+    }
   }
 
   private applyGuildEmojiMutation(body: { guildId: string; emoji: string; action: "add" | "remove"; }): BlocklistConfig {

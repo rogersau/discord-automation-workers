@@ -711,6 +711,52 @@ test("ModerationStoreDO rejects invalid ticket payloads with 400", async () => {
   assert.equal(missingCloseField.status, 400);
 });
 
+test("ModerationStoreDO surfaces a failed ticket close update", async () => {
+  const sql = createFakeSql({ closeTicketUpdateChanges: 0 });
+  const ctx = { storage: { sql } } as unknown as DurableObjectState;
+  const store = new ModerationStoreDO(
+    ctx,
+    { BOT_USER_ID: "bot-1", DISCORD_BOT_TOKEN: "token" } as never
+  );
+
+  await store.fetch(
+    new Request("https://moderation-store/ticket-instance", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        guildId: "guild-1",
+        channelId: "ticket-channel-1",
+        ticketTypeId: "appeals",
+        ticketTypeLabel: "Appeal",
+        openerUserId: "user-1",
+        supportRoleId: "role-1",
+        status: "open",
+        answers: [],
+        openedAtMs: 1000,
+        closedAtMs: null,
+        closedByUserId: null,
+        transcriptMessageId: null,
+      }),
+    })
+  );
+
+  const response = await store.fetch(
+    new Request("https://moderation-store/ticket-instance/close", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        guildId: "guild-1",
+        channelId: "ticket-channel-1",
+        closedByUserId: "user-2",
+        closedAtMs: 2000,
+        transcriptMessageId: "transcript-message-1",
+      }),
+    })
+  );
+
+  assert.equal(response.status, 500);
+});
+
 test("ModerationStoreDO alarm only removes timed roles after Discord role removal succeeds", async () => {
   const now = 1_700_000_000_000;
   const originalNow = Date.now;
@@ -842,6 +888,7 @@ test("ModerationStoreDO alarm only removes timed roles after Discord role remova
 function createFakeSql(options?: {
   failOnDelete?: boolean;
   failOnSelectConfig?: boolean;
+  closeTicketUpdateChanges?: number;
   appConfigEntries?: Array<[string, string]>;
 }) {
   const appConfig = new Map<string, string>(options?.appConfigEntries ?? []);
@@ -1141,6 +1188,9 @@ function createFakeSql(options?: {
         const row = ticketInstances.get(key);
         if (!row || row.status !== "open") {
           return { changes: 0 };
+        }
+        if (options?.closeTicketUpdateChanges !== undefined) {
+          return { changes: options.closeTicketUpdateChanges };
         }
         ticketInstances.set(key, {
           ...row,
