@@ -107,6 +107,19 @@ test("authenticated admin dashboard renders the blocklist workspace on /admin/bl
   assert.doesNotMatch(html, /Load ticket panel/i);
 });
 
+test("authenticated admin dashboard renders the timed roles workspace on /admin/timed-roles", () => {
+  const html = renderToString(
+    <App initialAuthenticated initialPath="/admin/timed-roles" />
+  );
+
+  assert.match(html, /aria-current="page"[^>]*>Timed Roles</);
+  assert.match(html, /Load timed roles/i);
+  assert.match(html, /Add timed role/i);
+  assert.match(html, /Duration/i);
+  assert.doesNotMatch(html, /Load blocklist/i);
+  assert.doesNotMatch(html, /Load ticket panel/i);
+});
+
 test("combineDashboardErrors preserves both overview and gateway failures", () => {
   assert.equal(
     combineDashboardErrors("Overview failed.", "Gateway failed."),
