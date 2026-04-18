@@ -3,31 +3,24 @@ import {
   startGatewayStatusMonitor,
   type GatewayStatusMonitor,
 } from "../admin-gateway-monitor";
+import { AdminBlocklistPage } from "./components/admin-blocklist-page";
+import { AdminGatewayPage } from "./components/admin-gateway-page";
+import { AdminOverviewPage } from "./components/admin-overview-page";
+import { AdminShell } from "./components/admin-shell";
+import { AdminTicketsPage } from "./components/admin-tickets-page";
+import { AdminTimedRolesPage } from "./components/admin-timed-roles-page";
 import { cn } from "./lib/utils";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-import {
-  GuildOverviewCard,
-  type AdminOverviewGuild,
-} from "./components/guild-overview-card";
-import { GuildPicker } from "./components/guild-picker";
+import { type AdminOverviewGuild } from "./components/guild-overview-card";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./components/ui/table";
-import { TicketPanelEditor, type GuildResources } from "./components/ticket-panel-editor";
-import type { TicketPanelConfig } from "../types";
 import type {
   AdminGuildDirectoryEntry,
   AdminGuildDirectoryResponse,
 } from "../runtime/admin-types";
+import { normalizeAdminDashboardPath } from "./dashboard-routes";
 
 interface GatewayStatus {
   status: string;
@@ -39,30 +32,22 @@ interface GatewayStatus {
   heartbeatIntervalMs: number | null;
 }
 
-interface TimedRoleAssignment {
-  guildId: string;
-  userId: string;
-  roleId: string;
-  durationInput: string;
-  expiresAtMs: number;
-}
-
 interface AdminOverview {
   gateway: GatewayStatus;
   guilds: AdminOverviewGuild[];
 }
 
-interface GuildSelectionProps {
-  guildDirectory: AdminGuildDirectoryEntry[] | null;
-  guildLookupError: string | null;
-}
-
 interface Props {
   initialAuthenticated?: boolean;
+  initialPath?: string;
 }
 
-export default function App({ initialAuthenticated = false }: Props) {
+export default function App({
+  initialAuthenticated = false,
+  initialPath = "/admin",
+}: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
+  const currentPath = normalizeAdminDashboardPath(initialPath);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
@@ -185,164 +170,52 @@ export default function App({ initialAuthenticated = false }: Props) {
   }
 
   if (authenticated) {
-    const totalTimedRoles = overview
-      ? overview.guilds.reduce((sum, guild) => sum + guild.timedRoles.length, 0)
-      : null;
     const guildNamesById = new Map(
       (guildDirectory ?? []).map((guild) => [guild.guildId, guild.name] as const)
     );
 
     return (
-      <main className="min-h-screen">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-          <header className="flex flex-col gap-4 rounded-lg border bg-card p-6 text-card-foreground shadow-sm lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <h1 className="text-3xl font-semibold tracking-tight">Admin Dashboard</h1>
-                <p className="max-w-2xl text-sm text-muted-foreground">
-                  Monitor gateway health, review stored guild state, and manage moderation controls.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <SummaryChip
-                  label="Gateway"
-                  value={gatewayStatus?.status ?? "Loading"}
-                  tone={getStatusTone(gatewayStatus?.status ?? null)}
-                />
-                <SummaryChip
-                  label="Stored guilds"
-                  value={overview ? String(overview.guilds.length) : "-"}
-                />
-                <SummaryChip
-                  label="Timed roles"
-                  value={totalTimedRoles === null ? "-" : String(totalTimedRoles)}
-                />
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={async () => {
-                await fetch("/admin/logout", { method: "POST" });
-                window.location.href = "/admin/login";
-              }}
-            >
-              Sign out
-            </Button>
-          </header>
-
-          <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-            <section className="space-y-4">
-              <SectionHeading
-                title="Gateway"
-                description="Start the session and watch live telemetry from the Discord gateway."
-              />
-              <Card>
-                <CardContent className="space-y-5 pt-6">
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" onClick={handleGatewayStart}>Start gateway</Button>
-                    <Button size="sm" variant="outline" onClick={() => void loadOverview()}>
-                      Refresh dashboard
-                    </Button>
-                  </div>
-                  {gatewayError && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{gatewayError}</AlertDescription>
-                    </Alert>
-                  )}
-                  {gatewayStatus ? (
-                    <GatewayDetails status={gatewayStatus} />
-                  ) : (
-                    <EmptyState message="Loading gateway status..." />
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-
-            <section className="space-y-4">
-              <SectionHeading
-                title="Stored Server Data"
-                description="Review blocklist coverage and active timed roles across connected guilds."
-              />
-              <Card>
-                <CardContent className="space-y-4 pt-6">
-                  {overviewError && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{overviewError}</AlertDescription>
-                    </Alert>
-                  )}
-                  {overview ? (
-                    overview.guilds.length === 0 ? (
-                      <EmptyState message="No blocklists or timed roles are stored yet." />
-                    ) : (
-                      <div className="space-y-4">
-                        {overview.guilds.map((guild) => (
-                          <GuildOverviewCard
-                            key={guild.guildId}
-                            guild={guild}
-                            guildName={guildNamesById.get(guild.guildId) ?? null}
-                          />
-                        ))}
-                      </div>
-                    )
-                  ) : (
-                    <EmptyState message="Loading stored server data..." />
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-          </div>
-
-          <div className="grid gap-6">
-            <section className="space-y-4">
-              <SectionHeading
-                title="Blocklist"
-                description="Load the guild blocklist, then add or remove blocked reaction emoji."
-              />
-              <Card>
-                <CardContent className="pt-6">
-                  <BlocklistEditor
-                    guildDirectory={guildDirectory}
-                    guildLookupError={guildLookupError}
-                    onUpdated={loadOverview}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-
-            <section className="space-y-4">
-              <SectionHeading
-                title="Timed Roles"
-                description="Inspect scheduled role assignments and issue new ones without leaving the dashboard."
-              />
-              <Card>
-                <CardContent className="pt-6">
-                  <TimedRolesEditor
-                    guildDirectory={guildDirectory}
-                    guildLookupError={guildLookupError}
-                    onUpdated={loadOverview}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-
-            <section className="space-y-4">
-              <SectionHeading
-                title="Ticket Panels"
-                description="Configure ticket buttons, questions, and transcript routing."
-              />
-              <Card>
-                <CardContent className="pt-6">
-                  <TicketPanelsEditor
-                    guildDirectory={guildDirectory}
-                    guildLookupError={guildLookupError}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-          </div>
-        </div>
-      </main>
+      <AdminShell currentPath={currentPath}>
+        {currentPath === "/admin" ? (
+          <AdminOverviewPage
+            gatewayStatus={gatewayError ? null : gatewayStatus}
+            overview={overview}
+            overviewError={combineDashboardErrors(overviewError, gatewayError)}
+            directoryError={guildLookupError}
+            guildNamesById={guildNamesById}
+            onStartGateway={handleGatewayStart}
+            onRefresh={loadOverview}
+          />
+        ) : null}
+        {currentPath === "/admin/gateway" ? (
+          <AdminGatewayPage
+            gatewayStatus={gatewayStatus}
+            gatewayError={gatewayError}
+            onStartGateway={handleGatewayStart}
+            onRefresh={loadOverview}
+          />
+        ) : null}
+        {currentPath === "/admin/blocklist" ? (
+          <AdminBlocklistPage
+            guildDirectory={guildDirectory}
+            guildLookupError={guildLookupError}
+            onUpdated={loadOverview}
+          />
+        ) : null}
+        {currentPath === "/admin/timed-roles" ? (
+          <AdminTimedRolesPage
+            guildDirectory={guildDirectory}
+            guildLookupError={guildLookupError}
+            onUpdated={loadOverview}
+          />
+        ) : null}
+        {currentPath === "/admin/tickets" ? (
+          <AdminTicketsPage
+            guildDirectory={guildDirectory}
+            guildLookupError={guildLookupError}
+          />
+        ) : null}
+      </AdminShell>
     );
   }
 
@@ -383,7 +256,12 @@ export default function App({ initialAuthenticated = false }: Props) {
   );
 }
 
-function GatewayDetails({ status }: { status: GatewayStatus }) {
+export function combineDashboardErrors(...errors: Array<string | null>): string | null {
+  const combined = errors.filter((error): error is string => Boolean(error)).join(" ");
+  return combined.length > 0 ? combined : null;
+}
+
+export function GatewayDetails({ status }: { status: GatewayStatus }) {
   const details = [
     ["Session ID", status.sessionId ?? "Not established"],
     ["Last sequence", status.lastSequence ?? "None"],
@@ -416,456 +294,7 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
   );
 }
 
-function BlocklistEditor({
-  guildDirectory,
-  guildLookupError,
-  onUpdated,
-}: GuildSelectionProps & { onUpdated: () => Promise<void> }) {
-  const [guildId, setGuildId] = useState("");
-  const [emoji, setEmoji] = useState("");
-  const [action, setAction] = useState<"add" | "remove">("add");
-  const [currentEmojis, setCurrentEmojis] = useState<string[] | null>(null);
-  const [result, setResult] = useState<string | null>(null);
-  const trimmedGuildId = guildId.trim();
-
-  async function loadBlocklist(id: string) {
-    const normalizedGuildId = id.trim();
-    if (!normalizedGuildId) { setCurrentEmojis(null); return; }
-    try {
-      const res = await fetch(`/admin/api/blocklist?guildId=${encodeURIComponent(normalizedGuildId)}`);
-      if (res.ok) {
-        const data = await res.json() as { emojis: string[] };
-        setCurrentEmojis(data.emojis);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function handleSubmit() {
-    const res = await fetch("/admin/api/blocklist", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ guildId, emoji, action }),
-    });
-    if (res.ok) {
-      const data = await res.json() as { guilds: Record<string, { emojis: string[] }> };
-      setCurrentEmojis(data.guilds?.[guildId]?.emojis ?? null);
-      setResult(`${action === "add" ? "Blocked" : "Unblocked"} ${emoji} in ${guildId}`);
-      await onUpdated();
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <EditorPanel>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1.05fr)_minmax(14rem,0.95fr)]">
-          <GuildPicker
-            id="bl-guild"
-            value={guildId}
-            guildDirectory={guildDirectory}
-            loadError={guildLookupError}
-            onChange={(nextGuildId) => {
-              setGuildId(nextGuildId);
-              setCurrentEmojis(null);
-            }}
-          />
-          <FormField label="Emoji" htmlFor="bl-emoji">
-            <Input id="bl-emoji" value={emoji} onChange={(e) => setEmoji(e.target.value)} />
-          </FormField>
-          <FormField label="Action">
-            <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-1.5">
-              <Button
-                size="sm"
-                variant={action === "add" ? "default" : "outline"}
-                onClick={() => setAction("add")}
-              >
-                Add
-              </Button>
-              <Button
-                size="sm"
-                variant={action === "remove" ? "default" : "outline"}
-                onClick={() => setAction("remove")}
-              >
-                Remove
-              </Button>
-            </div>
-          </FormField>
-        </div>
-        <EditorActions>
-          <Button
-            size="sm"
-            className="w-full sm:w-auto sm:min-w-[11rem]"
-            variant="outline"
-            disabled={!trimmedGuildId}
-            onClick={() => void loadBlocklist(guildId)}
-          >
-            Load blocklist
-          </Button>
-          <Button size="sm" className="w-full sm:w-auto sm:min-w-[10rem]" onClick={handleSubmit}>
-            Apply
-          </Button>
-        </EditorActions>
-      </EditorPanel>
-      {currentEmojis !== null && (
-        <div className="rounded-lg border bg-background p-4">
-          <p className="text-sm text-muted-foreground">
-            {currentEmojis.length === 0
-              ? "No emojis currently blocked in this guild."
-              : `Currently blocked: ${currentEmojis.join(" ")}`}
-          </p>
-        </div>
-      )}
-      {result && (
-        <Alert>
-          <AlertDescription>{result}</AlertDescription>
-        </Alert>
-      )}
-    </div>
-  );
-}
-
-function TimedRolesEditor({
-  guildDirectory,
-  guildLookupError,
-  onUpdated,
-}: GuildSelectionProps & { onUpdated: () => Promise<void> }) {
-  const [guildId, setGuildId] = useState("");
-  const [userId, setUserId] = useState("");
-  const [roleId, setRoleId] = useState("");
-  const [duration, setDuration] = useState("1h");
-  const [assignments, setAssignments] = useState<TimedRoleAssignment[] | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const trimmedGuildId = guildId.trim();
-
-  async function loadAssignments(nextGuildId: string) {
-    const trimmedGuildId = nextGuildId.trim();
-    setMessage(null);
-    setError(null);
-
-    if (!trimmedGuildId) {
-      setAssignments(null);
-      return;
-    }
-
-    const res = await fetch(`/admin/api/timed-roles?guildId=${encodeURIComponent(trimmedGuildId)}`);
-    if (!res.ok) {
-      setError("Failed to load timed roles.");
-      return;
-    }
-
-    const data = await res.json() as { assignments: TimedRoleAssignment[] };
-    setAssignments(data.assignments);
-  }
-
-  async function handleAdd() {
-    setMessage(null);
-    setError(null);
-
-    const res = await fetch("/admin/api/timed-roles", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "add",
-        guildId,
-        userId,
-        roleId,
-        duration,
-      }),
-    });
-
-    const data = await res.json() as { assignments?: TimedRoleAssignment[]; error?: string };
-    if (!res.ok) {
-      setError(data.error ?? "Failed to add the timed role.");
-      return;
-    }
-
-    setAssignments(data.assignments ?? []);
-    setMessage(`Assigned ${roleId} to ${userId} for ${duration}.`);
-    await onUpdated();
-  }
-
-  async function handleRemove(assignment: TimedRoleAssignment) {
-    setMessage(null);
-    setError(null);
-
-    const res = await fetch("/admin/api/timed-roles", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "remove",
-        guildId: assignment.guildId,
-        userId: assignment.userId,
-        roleId: assignment.roleId,
-      }),
-    });
-
-    const data = await res.json() as { assignments?: TimedRoleAssignment[]; error?: string };
-    if (!res.ok) {
-      setError(data.error ?? "Failed to remove the timed role.");
-      return;
-    }
-
-    setAssignments(data.assignments ?? []);
-    setMessage(`Removed ${assignment.roleId} from ${assignment.userId}.`);
-    await onUpdated();
-  }
-
-  return (
-    <div className="space-y-4">
-      <EditorPanel>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(8rem,0.8fr)]">
-          <GuildPicker
-            id="tr-guild"
-            value={guildId}
-            guildDirectory={guildDirectory}
-            loadError={guildLookupError}
-            onChange={(nextGuildId) => {
-              setGuildId(nextGuildId);
-              setAssignments(null);
-            }}
-          />
-          <FormField label="User ID" htmlFor="tr-user">
-            <Input id="tr-user" value={userId} onChange={(e) => setUserId(e.target.value)} />
-          </FormField>
-          <FormField label="Role ID" htmlFor="tr-role">
-            <Input id="tr-role" value={roleId} onChange={(e) => setRoleId(e.target.value)} />
-          </FormField>
-          <FormField label="Duration" htmlFor="tr-duration">
-            <Input id="tr-duration" value={duration} onChange={(e) => setDuration(e.target.value)} />
-          </FormField>
-        </div>
-        <EditorActions>
-          <Button
-            size="sm"
-            className="w-full sm:w-auto sm:min-w-[12rem]"
-            variant="outline"
-            disabled={!trimmedGuildId}
-            onClick={() => void loadAssignments(guildId)}
-          >
-            Load timed roles
-          </Button>
-          <Button size="sm" className="w-full sm:w-auto sm:min-w-[12rem]" onClick={() => void handleAdd()}>
-            Add timed role
-          </Button>
-        </EditorActions>
-      </EditorPanel>
-
-      {assignments !== null && (
-        assignments.length === 0 ? (
-          <EmptyState message="No timed roles are active in this guild." />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {assignments.map((assignment) => (
-                <TableRow key={`${assignment.guildId}:${assignment.userId}:${assignment.roleId}`}>
-                  <TableCell>{assignment.userId}</TableCell>
-                  <TableCell>{assignment.roleId}</TableCell>
-                  <TableCell>{assignment.durationInput}</TableCell>
-                  <TableCell>{new Date(assignment.expiresAtMs).toLocaleString()}</TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void handleRemove(assignment)}
-                    >
-                      Remove
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )
-      )}
-
-      {message && (
-        <Alert>
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      )}
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-    </div>
-  );
-}
-
-function TicketPanelsEditor({
-  guildDirectory,
-  guildLookupError,
-}: GuildSelectionProps) {
-  const [guildId, setGuildId] = useState("");
-  const [guildResources, setGuildResources] = useState<GuildResources | null>(null);
-  const [panelConfig, setPanelConfig] = useState<TicketPanelConfig | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const trimmedGuildId = guildId.trim();
-
-  async function loadResources(id: string) {
-    const normalized = id.trim();
-    if (!normalized) {
-      setGuildResources(null);
-      setPanelConfig(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      setLoadError(null);
-      const [resourcesRes, panelRes] = await Promise.all([
-        fetch(`/admin/api/tickets/resources?guildId=${encodeURIComponent(normalized)}`),
-        fetch(`/admin/api/tickets/panel?guildId=${encodeURIComponent(normalized)}`),
-      ]);
-      if (!resourcesRes.ok) {
-        throw new Error(`Failed to load guild resources (${resourcesRes.status})`);
-      }
-      const resources = await resourcesRes.json() as GuildResources;
-      setGuildResources(resources);
-
-      if (panelRes.ok) {
-        const data = await panelRes.json() as { panel: TicketPanelConfig | null };
-        setPanelConfig(
-          data.panel ?? {
-            guildId: normalized,
-            panelChannelId: "",
-            categoryChannelId: "",
-            transcriptChannelId: "",
-            panelTitle: null,
-            panelDescription: null,
-            panelFooter: null,
-            panelMessageId: null,
-            ticketTypes: [],
-          }
-        );
-      }
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load guild data.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleSave() {
-    if (!panelConfig) return;
-    const res = await fetch("/admin/api/tickets/panel", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(panelConfig),
-    });
-    if (!res.ok) {
-      const data = await res.json() as { error?: string };
-      throw new Error(data.error ?? `Save failed (${res.status})`);
-    }
-  }
-
-  async function handlePublish() {
-    if (!panelConfig) return;
-    const res = await fetch("/admin/api/tickets/panel/publish", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ guildId: panelConfig.guildId }),
-    });
-    if (!res.ok) {
-      const data = await res.json() as { error?: string };
-      throw new Error(data.error ?? `Publish failed (${res.status})`);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-4 rounded-lg border bg-muted/30 p-4 md:p-6">
-        <GuildPicker
-          id="tp-guild"
-          value={guildId}
-          guildDirectory={guildDirectory}
-          loadError={guildLookupError}
-          onChange={(nextGuildId) => {
-            setGuildId(nextGuildId);
-            setGuildResources(null);
-            setPanelConfig(null);
-          }}
-        />
-        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:justify-end">
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full sm:w-auto sm:min-w-[14rem]"
-            disabled={!trimmedGuildId || loading}
-            onClick={() => void loadResources(guildId)}
-          >
-            {loading ? "Loading…" : "Load ticket panel"}
-          </Button>
-        </div>
-      </div>
-
-      {loadError && (
-        <Alert variant="destructive">
-          <AlertDescription>{loadError}</AlertDescription>
-        </Alert>
-      )}
-
-      {guildResources && panelConfig && (
-        <TicketPanelEditor
-          guildResources={guildResources}
-          value={panelConfig}
-          onChange={setPanelConfig}
-          onSave={handleSave}
-          onPublish={handlePublish}
-        />
-      )}
-    </div>
-  );
-}
-
-function SectionHeading({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="space-y-1.5 px-1">
-      <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-      <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function EditorPanel({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-4 rounded-lg border bg-muted/30 p-4 md:p-6">{children}</div>;
-}
-
-function FormField({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 space-y-2">
-      <Label htmlFor={htmlFor} className="text-sm font-medium leading-none">
-        {label}
-      </Label>
-      {children}
-    </div>
-  );
-}
-
-function EditorActions({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:justify-end">{children}</div>;
-}
-
-function SummaryChip({
+export function SummaryChip({
   label,
   value,
   tone = "neutral",
@@ -885,14 +314,6 @@ function SummaryChip({
     >
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
-      {message}
     </div>
   );
 }

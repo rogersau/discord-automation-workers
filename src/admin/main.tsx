@@ -7,9 +7,10 @@ const root = document.getElementById("admin-root");
 if (!root) throw new Error("Missing #admin-root element");
 
 const initialAuthenticated = root.dataset.authenticated === "true";
+const initialPath = root.dataset.initialPath ?? "/admin";
 
 createRoot(root).render(
   <StrictMode>
-    <App initialAuthenticated={initialAuthenticated} />
+    <App initialAuthenticated={initialAuthenticated} initialPath={initialPath} />
   </StrictMode>
 );

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 // @ts-ignore -- Runtime tests compile under tsconfig.tests.json.
 import test from "node:test";
 
-import { createRuntimeApp } from "../src/runtime/app";
+import { createRuntimeApp, escapeHtmlAttribute } from "../src/runtime/app";
 import { createAdminSessionCookie } from "../src/runtime/admin-auth";
 import type { GatewayController, RuntimeStore } from "../src/runtime/contracts";
 import type { AppConfigMutation } from "../src/runtime/admin-types";
@@ -100,6 +100,55 @@ test("createRuntimeApp rejects invalid admin login passwords", async () => {
 
   assert.equal(loginResponse.status, 401);
   assert.equal(loginResponse.headers.get("set-cookie"), null);
+});
+
+
+test("createRuntimeApp serves authenticated dashboard shells for nested admin pages", async () => {
+  const app = createRuntimeApp({
+    discordPublicKey: "a".repeat(64),
+    discordBotToken: "bot-token",
+    adminUiPassword: "let-me-in",
+    adminSessionSecret: "session-secret",
+    verifyDiscordRequest: async () => true,
+    store: {} as RuntimeStore,
+    gateway: {} as GatewayController,
+  });
+
+  const cookie = await createAdminSessionCookie("session-secret");
+  const response = await app.fetch(
+    new Request("https://runtime.example/admin/tickets", {
+      headers: { cookie },
+    })
+  );
+
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /data-authenticated="true"/);
+  assert.match(html, /data-initial-path="\/admin\/tickets"/);
+});
+
+test("createRuntimeApp redirects unauthenticated nested admin pages to login", async () => {
+  const app = createRuntimeApp({
+    discordPublicKey: "a".repeat(64),
+    discordBotToken: "bot-token",
+    adminUiPassword: "let-me-in",
+    adminSessionSecret: "session-secret",
+    verifyDiscordRequest: async () => true,
+    store: {} as RuntimeStore,
+    gateway: {} as GatewayController,
+  });
+
+  const response = await app.fetch(new Request("https://runtime.example/admin/gateway"));
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/admin/login");
+});
+
+test("escapeHtmlAttribute escapes characters unsafe in HTML attributes", () => {
+  assert.equal(
+    escapeHtmlAttribute(`"/admin?<tag>&'`),
+    "&quot;/admin?&lt;tag&gt;&amp;&#39;"
+  );
 });
 
 test("createRuntimeApp handles health checks", async () => {
