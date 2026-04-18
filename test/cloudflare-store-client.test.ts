@@ -32,3 +32,87 @@ test("createCloudflareStoreClient uses typed methods instead of exposing raw fet
     },
   ]);
 });
+
+test("createCloudflareStoreClient.upsertAppConfig sends POST to /app-config", async () => {
+  const requests: Array<{ url: string; method: string; body: string | null }> = [];
+  const storeClient = createCloudflareStoreClient({
+    fetch(input, init) {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return Promise.resolve(new Response(null, { status: 200 }) as any);
+    },
+  });
+
+  await storeClient.upsertAppConfig({ key: "server_name", value: "My Server" });
+
+  assert.deepEqual(requests, [
+    {
+      url: "https://moderation-store/app-config",
+      method: "POST",
+      body: JSON.stringify({ key: "server_name", value: "My Server" }),
+    },
+  ]);
+});
+
+test("createCloudflareStoreClient.listTimedRolesByGuild sends GET with guildId query param", async () => {
+  const requests: Array<{ url: string; method: string; body: string | null }> = [];
+  const storeClient = createCloudflareStoreClient({
+    fetch(input, init) {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return Promise.resolve(Response.json([]) as any);
+    },
+  });
+
+  await storeClient.listTimedRolesByGuild("guild-123");
+
+  assert.deepEqual(requests, [
+    {
+      url: "https://moderation-store/timed-roles?guildId=guild-123",
+      method: "GET",
+      body: null,
+    },
+  ]);
+});
+
+test("createCloudflareStoreClient.upsertTimedRole sends POST to /timed-role", async () => {
+  const requests: Array<{ url: string; method: string; body: string | null }> = [];
+  const storeClient = createCloudflareStoreClient({
+    fetch(input, init) {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return Promise.resolve(new Response(null, { status: 200 }) as any);
+    },
+  });
+
+  await storeClient.upsertTimedRole({
+    guildId: "guild-456",
+    userId: "user-789",
+    roleId: "role-101",
+    durationInput: "1h",
+    expiresAtMs: 1234567890,
+  });
+
+  assert.deepEqual(requests, [
+    {
+      url: "https://moderation-store/timed-role",
+      method: "POST",
+      body: JSON.stringify({
+        guildId: "guild-456",
+        userId: "user-789",
+        roleId: "role-101",
+        durationInput: "1h",
+        expiresAtMs: 1234567890,
+      }),
+    },
+  ]);
+});
