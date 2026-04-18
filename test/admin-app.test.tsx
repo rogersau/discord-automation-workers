@@ -26,50 +26,59 @@ const overviewGuild: AdminOverviewGuild = {
   timedRoles: [],
 };
 
+
+
+test("authenticated admin dashboard renders a sidebar shell with an overview landing page", () => {
+  const html = renderToString(<App initialAuthenticated initialPath="/admin" />);
+
+  assert.match(html, /href="\/admin"/);
+  assert.match(html, /href="\/admin\/gateway"/);
+  assert.match(html, /href="\/admin\/blocklist"/);
+  assert.match(html, /href="\/admin\/timed-roles"/);
+  assert.match(html, /href="\/admin\/tickets"/);
+  assert.match(html, /aria-current="page"[^>]*>Overview</);
+  assert.match(html, /Operational overview/i);
+  assert.match(html, /Start gateway/i);
+  assert.match(html, /Refresh dashboard/i);
+  assert.doesNotMatch(html, /Load blocklist/i);
+  assert.doesNotMatch(html, /Load timed roles/i);
+});
+
 test("authenticated admin dashboard keeps guild load controls in a plain shadcn layout", () => {
   const html = renderToString(<App initialAuthenticated />);
 
-  assert.match(html, /Load blocklist/i);
-  assert.match(html, /Load timed roles/i);
-  assert.doesNotMatch(html, /Operations Console/);
-  assert.doesNotMatch(html, /rounded-\[2rem\]/);
-  assert.doesNotMatch(html, /shadow-\[0_32px_90px/);
-  assert.match(html, /mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6/);
+  assert.match(html, /Discord Automation/);
+  assert.match(html, /Admin Dashboard/);
+  assert.match(html, /mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6/);
   assert.match(html, /rounded-lg border bg-card text-card-foreground shadow-sm/);
-  assert.match(html, /flex flex-col gap-3 border-t pt-4 sm:flex-row sm:justify-end/);
+  assert.match(html, /method="post" action="\/admin\/logout"/);
 });
 
 test("authenticated admin dashboard avoids the old custom editor panel chrome", () => {
   const html = renderToString(<App initialAuthenticated />);
 
-  assert.doesNotMatch(html, /xl:grid-cols-5/);
-  assert.doesNotMatch(html, /xl:grid-cols-6/);
-  assert.doesNotMatch(html, /auto_auto/);
-  assert.doesNotMatch(
-    html,
-    /rounded-\[1\.75rem\] border border-border\/70 bg-background\/30 p-5 lg:p-6/
-  );
-  assert.doesNotMatch(
-    html,
-    /border-t border-border\/70 pt-5 sm:flex-row sm:items-center sm:justify-end/
-  );
-  assert.match(html, /rounded-lg border bg-muted\/30 p-4 md:p-6/);
+  assert.doesNotMatch(html, /Load blocklist/i);
+  assert.doesNotMatch(html, /Load timed roles/i);
+  assert.doesNotMatch(html, /Configure ticket buttons, questions, and transcript routing/i);
+  assert.doesNotMatch(html, /Guild ID/);
 });
 
-test("authenticated admin dashboard renders the ticketing section", () => {
+test("authenticated admin dashboard renders overview content instead of editor sections", () => {
   const html = renderToString(<App initialAuthenticated />);
-  assert.match(html, /Ticket Panels/i);
-  assert.match(html, /Configure ticket buttons, questions, and transcript routing/i);
+
+  assert.match(html, /Stored server data/i);
+  assert.match(html, /Quick actions/i);
+  assert.match(html, /Start gateway/i);
 });
 
-test("authenticated admin dashboard labels guild workflows as server controls", () => {
+test("authenticated admin dashboard keeps navigation labels for future workflow pages", () => {
   const html = renderToString(<App initialAuthenticated />);
 
+  assert.match(html, />Overview</);
+  assert.match(html, />Gateway</);
   assert.match(html, /Blocklist/i);
   assert.match(html, /Timed Roles/i);
-  assert.match(html, /Ticket Panels/i);
-  assert.match(html, /Server/);
-  assert.doesNotMatch(html, /Guild ID/);
+  assert.match(html, />Tickets</);
 });
 
 

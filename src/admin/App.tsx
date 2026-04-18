@@ -3,14 +3,13 @@ import {
   startGatewayStatusMonitor,
   type GatewayStatusMonitor,
 } from "../admin-gateway-monitor";
+import { AdminOverviewPage } from "./components/admin-overview-page";
+import { AdminShell } from "./components/admin-shell";
 import { cn } from "./lib/utils";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-import {
-  GuildOverviewCard,
-  type AdminOverviewGuild,
-} from "./components/guild-overview-card";
+import { type AdminOverviewGuild } from "./components/guild-overview-card";
 import { GuildPicker } from "./components/guild-picker";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
@@ -28,6 +27,7 @@ import type {
   AdminGuildDirectoryEntry,
   AdminGuildDirectoryResponse,
 } from "../runtime/admin-types";
+import { normalizeAdminDashboardPath } from "./dashboard-routes";
 
 interface GatewayStatus {
   status: string;
@@ -67,7 +67,7 @@ export default function App({
   initialPath = "/admin",
 }: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
-  const [currentPath] = useState(initialPath);
+  const currentPath = normalizeAdminDashboardPath(initialPath);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
@@ -190,164 +190,22 @@ export default function App({
   }
 
   if (authenticated) {
-    const totalTimedRoles = overview
-      ? overview.guilds.reduce((sum, guild) => sum + guild.timedRoles.length, 0)
-      : null;
     const guildNamesById = new Map(
       (guildDirectory ?? []).map((guild) => [guild.guildId, guild.name] as const)
     );
 
     return (
-      <main className="min-h-screen" data-current-path={currentPath}>
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-          <header className="flex flex-col gap-4 rounded-lg border bg-card p-6 text-card-foreground shadow-sm lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <h1 className="text-3xl font-semibold tracking-tight">Admin Dashboard</h1>
-                <p className="max-w-2xl text-sm text-muted-foreground">
-                  Monitor gateway health, review stored guild state, and manage moderation controls.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <SummaryChip
-                  label="Gateway"
-                  value={gatewayStatus?.status ?? "Loading"}
-                  tone={getStatusTone(gatewayStatus?.status ?? null)}
-                />
-                <SummaryChip
-                  label="Stored guilds"
-                  value={overview ? String(overview.guilds.length) : "-"}
-                />
-                <SummaryChip
-                  label="Timed roles"
-                  value={totalTimedRoles === null ? "-" : String(totalTimedRoles)}
-                />
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={async () => {
-                await fetch("/admin/logout", { method: "POST" });
-                window.location.href = "/admin/login";
-              }}
-            >
-              Sign out
-            </Button>
-          </header>
-
-          <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-            <section className="space-y-4">
-              <SectionHeading
-                title="Gateway"
-                description="Start the session and watch live telemetry from the Discord gateway."
-              />
-              <Card>
-                <CardContent className="space-y-5 pt-6">
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" onClick={handleGatewayStart}>Start gateway</Button>
-                    <Button size="sm" variant="outline" onClick={() => void loadOverview()}>
-                      Refresh dashboard
-                    </Button>
-                  </div>
-                  {gatewayError && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{gatewayError}</AlertDescription>
-                    </Alert>
-                  )}
-                  {gatewayStatus ? (
-                    <GatewayDetails status={gatewayStatus} />
-                  ) : (
-                    <EmptyState message="Loading gateway status..." />
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-
-            <section className="space-y-4">
-              <SectionHeading
-                title="Stored Server Data"
-                description="Review blocklist coverage and active timed roles across connected guilds."
-              />
-              <Card>
-                <CardContent className="space-y-4 pt-6">
-                  {overviewError && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{overviewError}</AlertDescription>
-                    </Alert>
-                  )}
-                  {overview ? (
-                    overview.guilds.length === 0 ? (
-                      <EmptyState message="No blocklists or timed roles are stored yet." />
-                    ) : (
-                      <div className="space-y-4">
-                        {overview.guilds.map((guild) => (
-                          <GuildOverviewCard
-                            key={guild.guildId}
-                            guild={guild}
-                            guildName={guildNamesById.get(guild.guildId) ?? null}
-                          />
-                        ))}
-                      </div>
-                    )
-                  ) : (
-                    <EmptyState message="Loading stored server data..." />
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-          </div>
-
-          <div className="grid gap-6">
-            <section className="space-y-4">
-              <SectionHeading
-                title="Blocklist"
-                description="Load the guild blocklist, then add or remove blocked reaction emoji."
-              />
-              <Card>
-                <CardContent className="pt-6">
-                  <BlocklistEditor
-                    guildDirectory={guildDirectory}
-                    guildLookupError={guildLookupError}
-                    onUpdated={loadOverview}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-
-            <section className="space-y-4">
-              <SectionHeading
-                title="Timed Roles"
-                description="Inspect scheduled role assignments and issue new ones without leaving the dashboard."
-              />
-              <Card>
-                <CardContent className="pt-6">
-                  <TimedRolesEditor
-                    guildDirectory={guildDirectory}
-                    guildLookupError={guildLookupError}
-                    onUpdated={loadOverview}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-
-            <section className="space-y-4">
-              <SectionHeading
-                title="Ticket Panels"
-                description="Configure ticket buttons, questions, and transcript routing."
-              />
-              <Card>
-                <CardContent className="pt-6">
-                  <TicketPanelsEditor
-                    guildDirectory={guildDirectory}
-                    guildLookupError={guildLookupError}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-          </div>
-        </div>
-      </main>
+      <AdminShell currentPath={currentPath}>
+        <AdminOverviewPage
+          gatewayStatus={gatewayError ? null : gatewayStatus}
+          overview={overview}
+          overviewError={overviewError ?? gatewayError}
+          directoryError={guildLookupError}
+          guildNamesById={guildNamesById}
+          onStartGateway={handleGatewayStart}
+          onRefresh={loadOverview}
+        />
+      </AdminShell>
     );
   }
 
@@ -388,7 +246,7 @@ export default function App({
   );
 }
 
-function GatewayDetails({ status }: { status: GatewayStatus }) {
+export function GatewayDetails({ status }: { status: GatewayStatus }) {
   const details = [
     ["Session ID", status.sessionId ?? "Not established"],
     ["Last sequence", status.lastSequence ?? "None"],
@@ -421,7 +279,7 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
   );
 }
 
-function BlocklistEditor({
+export function BlocklistEditor({
   guildDirectory,
   guildLookupError,
   onUpdated,
@@ -530,7 +388,7 @@ function BlocklistEditor({
   );
 }
 
-function TimedRolesEditor({
+export function TimedRolesEditor({
   guildDirectory,
   guildLookupError,
   onUpdated,
@@ -708,7 +566,7 @@ function TimedRolesEditor({
   );
 }
 
-function TicketPanelsEditor({
+export function TicketPanelsEditor({
   guildDirectory,
   guildLookupError,
 }: GuildSelectionProps) {
@@ -834,7 +692,7 @@ function TicketPanelsEditor({
   );
 }
 
-function SectionHeading({ title, description }: { title: string; description: string }) {
+export function SectionHeading({ title, description }: { title: string; description: string }) {
   return (
     <div className="space-y-1.5 px-1">
       <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
@@ -870,7 +728,7 @@ function EditorActions({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:justify-end">{children}</div>;
 }
 
-function SummaryChip({
+export function SummaryChip({
   label,
   value,
   tone = "neutral",
