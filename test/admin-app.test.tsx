@@ -81,6 +81,19 @@ test("authenticated admin dashboard keeps navigation labels for future workflow 
   assert.match(html, />Tickets</);
 });
 
+test("authenticated admin dashboard renders the gateway workspace on /admin/gateway", () => {
+  const html = renderToString(
+    <App initialAuthenticated initialPath="/admin/gateway" />
+  );
+
+  assert.match(html, /aria-current="page"[^>]*>Gateway</);
+  assert.match(html, /Start gateway/i);
+  assert.match(html, /Refresh dashboard/i);
+  assert.match(html, /Current state/i);
+  assert.doesNotMatch(html, /Load blocklist/i);
+  assert.doesNotMatch(html, /Add timed role/i);
+});
+
 test("combineDashboardErrors preserves both overview and gateway failures", () => {
   assert.equal(
     combineDashboardErrors("Overview failed.", "Gateway failed."),

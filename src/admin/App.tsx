@@ -3,6 +3,7 @@ import {
   startGatewayStatusMonitor,
   type GatewayStatusMonitor,
 } from "../admin-gateway-monitor";
+import { AdminGatewayPage } from "./components/admin-gateway-page";
 import { AdminOverviewPage } from "./components/admin-overview-page";
 import { AdminShell } from "./components/admin-shell";
 import { cn } from "./lib/utils";
@@ -196,15 +197,25 @@ export default function App({
 
     return (
       <AdminShell currentPath={currentPath}>
-        <AdminOverviewPage
-          gatewayStatus={gatewayError ? null : gatewayStatus}
-          overview={overview}
-          overviewError={combineDashboardErrors(overviewError, gatewayError)}
-          directoryError={guildLookupError}
-          guildNamesById={guildNamesById}
-          onStartGateway={handleGatewayStart}
-          onRefresh={loadOverview}
-        />
+        {currentPath === "/admin" ? (
+          <AdminOverviewPage
+            gatewayStatus={gatewayError ? null : gatewayStatus}
+            overview={overview}
+            overviewError={combineDashboardErrors(overviewError, gatewayError)}
+            directoryError={guildLookupError}
+            guildNamesById={guildNamesById}
+            onStartGateway={handleGatewayStart}
+            onRefresh={loadOverview}
+          />
+        ) : null}
+        {currentPath === "/admin/gateway" ? (
+          <AdminGatewayPage
+            gatewayStatus={gatewayStatus}
+            gatewayError={gatewayError}
+            onStartGateway={handleGatewayStart}
+            onRefresh={loadOverview}
+          />
+        ) : null}
       </AdminShell>
     );
   }
