@@ -21,6 +21,11 @@ export interface GuildTicketResources {
   roles: DiscordRoleResource[];
 }
 
+export interface DiscordCurrentUserGuild {
+  id: string;
+  name: string;
+}
+
 export interface CreateTicketChannelInput {
   guildId: string;
   name: string;
@@ -148,6 +153,20 @@ export async function listGuildTicketResources(
     channels,
     roles,
   };
+}
+
+export async function listBotGuilds(
+  botToken: string
+): Promise<Array<{ guildId: string; name: string }>> {
+  const guilds = await discordGetJson<DiscordCurrentUserGuild[]>(
+    `${DISCORD_API}/users/@me/guilds`,
+    botToken
+  );
+
+  return guilds.map(({ id, name }) => ({
+    guildId: id,
+    name,
+  }));
 }
 
 export async function createTicketChannel(

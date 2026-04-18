@@ -435,6 +435,58 @@ test("createRuntimeApp exposes dashboard overview data for discoverability in th
   });
 });
 
+test("createRuntimeApp exposes the bot guild directory for the admin UI", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    if (url.endsWith("/users/@me/guilds")) {
+      return Response.json([
+        { id: "guild-2", name: "Alpha" },
+        { id: "guild-3", name: "Alpha" },
+        { id: "guild-1", name: "Bravo" },
+      ]);
+    }
+
+    throw new Error(`Unexpected Discord call: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const app = createRuntimeApp({
+      discordPublicKey: "a".repeat(64),
+      discordBotToken: "bot-token",
+      adminUiPassword: "let-me-in",
+      adminSessionSecret: "session-secret",
+      verifyDiscordRequest: async () => true,
+      store: {} as RuntimeStore,
+      gateway: {} as GatewayController,
+    });
+
+    const cookie = await createAdminSessionCookie("session-secret");
+    const response = await app.fetch(
+      new Request("https://runtime.example/admin/api/guilds", {
+        headers: { cookie },
+      })
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      guilds: [
+        { guildId: "guild-2", name: "Alpha", label: "Alpha (guild-2)" },
+        { guildId: "guild-3", name: "Alpha", label: "Alpha (guild-3)" },
+        { guildId: "guild-1", name: "Bravo", label: "Bravo" },
+      ],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("createRuntimeApp exposes timed-role admin APIs through session auth", async () => {
   const calls: string[] = [];
   const assignments: TimedRoleAssignment[] = [

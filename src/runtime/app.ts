@@ -1,5 +1,9 @@
 import { ADMIN_ASSETS, ADMIN_LOGIN_HTML } from "./admin-bundle";
-import type { AppConfigMutation } from "./admin-types";
+import type {
+  AdminGuildDirectoryEntry,
+  AdminGuildDirectoryResponse,
+  AppConfigMutation,
+} from "./admin-types";
 import {
   ADMIN_SESSION_COOKIE_NAME,
   createAdminSessionCookie,
@@ -12,6 +16,7 @@ import {
   createTicketChannel,
   deleteChannel,
   DiscordApiError,
+  listBotGuilds,
   type GuildTicketResources,
   listChannelMessages,
   listGuildTicketResources,
@@ -172,6 +177,12 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
             gateway,
             guilds: buildAdminOverviewGuilds(config, timedRoles),
           });
+        }
+
+        if (request.method === "GET" && url.pathname === "/admin/api/guilds") {
+          const guilds = buildAdminGuildDirectory(await listBotGuilds(options.discordBotToken));
+          const body: AdminGuildDirectoryResponse = { guilds };
+          return Response.json(body);
         }
 
         if (request.method === "GET" && url.pathname === "/admin/api/config") {
@@ -426,6 +437,31 @@ function buildAdminOverviewGuilds(
   }
 
   return [...guilds.values()].sort((left, right) => left.guildId.localeCompare(right.guildId));
+}
+
+function buildAdminGuildDirectory(
+  guilds: Array<{ guildId: string; name: string }>
+): AdminGuildDirectoryEntry[] {
+  const nameCounts = new Map<string, number>();
+
+  for (const guild of guilds) {
+    nameCounts.set(guild.name, (nameCounts.get(guild.name) ?? 0) + 1);
+  }
+
+  return [...guilds]
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) ||
+        left.guildId.localeCompare(right.guildId)
+    )
+    .map((guild) => ({
+      guildId: guild.guildId,
+      name: guild.name,
+      label:
+        (nameCounts.get(guild.name) ?? 0) > 1
+          ? `${guild.name} (${guild.guildId})`
+          : guild.name,
+    }));
 }
 
 function renderAdminShell(authenticated = false): Response {
