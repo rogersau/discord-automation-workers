@@ -141,7 +141,31 @@ test("createRuntimeApp redirects unauthenticated nested admin pages to login", a
   const response = await app.fetch(new Request("https://runtime.example/admin/gateway"));
 
   assert.equal(response.status, 302);
-  assert.equal(response.headers.get("location"), "/admin/login");
+  assert.equal(response.headers.get("location"), "/admin/login?next=%2Fadmin%2Fgateway");
+});
+
+test("createRuntimeApp redirects successful admin login back to the requested dashboard page", async () => {
+  const app = createRuntimeApp({
+    discordPublicKey: "a".repeat(64),
+    discordBotToken: "bot-token",
+    adminUiPassword: "let-me-in",
+    adminSessionSecret: "session-secret",
+    verifyDiscordRequest: async () => true,
+    store: {} as RuntimeStore,
+    gateway: {} as GatewayController,
+  });
+
+  const response = await app.fetch(
+    new Request("https://runtime.example/admin/login?next=%2Fadmin%2Ftickets", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=let-me-in",
+      redirect: "manual",
+    })
+  );
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/admin/tickets");
 });
 
 test("escapeHtmlAttribute escapes characters unsafe in HTML attributes", () => {

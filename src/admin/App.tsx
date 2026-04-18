@@ -48,6 +48,7 @@ export default function App({
 }: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
   const currentPath = normalizeAdminDashboardPath(initialPath);
+  const pageDataPolicy = getDashboardPageDataPolicy(currentPath);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
@@ -71,6 +72,16 @@ export default function App({
     }
   }, []);
 
+  const loadGuildDirectory = useCallback(async () => {
+    return readJsonOrThrow<AdminGuildDirectoryResponse>("/admin/api/guilds");
+  }, []);
+
+  const refreshGatewayStatus = useCallback(async () => {
+    const nextGatewayStatus = await readJsonOrThrow<GatewayStatus>("/admin/api/gateway/status");
+    setGatewayStatus(nextGatewayStatus);
+    setGatewayError(null);
+  }, []);
+
   useEffect(() => {
     if (!authenticated) {
       gatewayMonitorRef.current = null;
@@ -83,8 +94,22 @@ export default function App({
       return;
     }
 
+    if (!pageDataPolicy.loadOverview) {
+      setOverview(null);
+      setOverviewError(null);
+    }
+
+    if (!pageDataPolicy.monitorGateway) {
+      gatewayMonitorRef.current = null;
+      setGatewayStatus(null);
+      setGatewayError(null);
+      return;
+    }
+
     let cancelled = false;
-    void loadOverview().catch(() => undefined);
+    if (pageDataPolicy.loadOverview) {
+      void loadOverview().catch(() => undefined);
+    }
 
     const monitor = startGatewayStatusMonitor({
       intervalMs: 2000,
@@ -118,10 +143,10 @@ export default function App({
       gatewayMonitorRef.current = null;
       monitor.stop();
     };
-  }, [authenticated, loadOverview]);
+  }, [authenticated, loadOverview, pageDataPolicy.loadOverview, pageDataPolicy.monitorGateway]);
 
   useEffect(() => {
-    if (!authenticated) {
+    if (!authenticated || !pageDataPolicy.loadGuildDirectory) {
       setGuildDirectory(null);
       setGuildLookupError(null);
       return;
@@ -131,7 +156,7 @@ export default function App({
 
     void (async () => {
       try {
-        const response = await readJsonOrThrow<AdminGuildDirectoryResponse>("/admin/api/guilds");
+        const response = await loadGuildDirectory();
         if (!cancelled) {
           setGuildDirectory(response.guilds);
           setGuildLookupError(null);
@@ -147,11 +172,14 @@ export default function App({
     return () => {
       cancelled = true;
     };
-  }, [authenticated]);
+  }, [authenticated, loadGuildDirectory, pageDataPolicy.loadGuildDirectory]);
 
   async function handleLogin() {
     setLoginError(false);
-    const res = await fetch("/admin/login", {
+    const loginPath = typeof window === "undefined"
+      ? "/admin/login"
+      : getAdminLoginRequestPath(window.location.pathname, window.location.search);
+    const res = await fetch(loginPath, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: `password=${encodeURIComponent(password)}`,
@@ -166,7 +194,10 @@ export default function App({
 
   async function handleGatewayStart() {
     await readJsonOrThrow("/admin/api/gateway/start", { method: "POST" });
-    await Promise.all([gatewayMonitorRef.current?.refresh(), loadOverview()]);
+    await Promise.all([
+      pageDataPolicy.monitorGateway ? gatewayMonitorRef.current?.refresh() : refreshGatewayStatus(),
+      pageDataPolicy.refreshOverviewAfterGatewayStart ? loadOverview() : Promise.resolve(),
+    ]);
   }
 
   if (authenticated) {
@@ -192,21 +223,19 @@ export default function App({
             gatewayStatus={gatewayStatus}
             gatewayError={gatewayError}
             onStartGateway={handleGatewayStart}
-            onRefresh={loadOverview}
+            onRefresh={refreshGatewayStatus}
           />
         ) : null}
         {currentPath === "/admin/blocklist" ? (
           <AdminBlocklistPage
             guildDirectory={guildDirectory}
             guildLookupError={guildLookupError}
-            onUpdated={loadOverview}
           />
         ) : null}
         {currentPath === "/admin/timed-roles" ? (
           <AdminTimedRolesPage
             guildDirectory={guildDirectory}
             guildLookupError={guildLookupError}
-            onUpdated={loadOverview}
           />
         ) : null}
         {currentPath === "/admin/tickets" ? (
@@ -259,6 +288,43 @@ export default function App({
 export function combineDashboardErrors(...errors: Array<string | null>): string | null {
   const combined = errors.filter((error): error is string => Boolean(error)).join(" ");
   return combined.length > 0 ? combined : null;
+}
+
+export function getAdminLoginRequestPath(pathname: string, search: string): string {
+  if (pathname !== "/admin/login") {
+    return "/admin/login";
+  }
+
+  return search ? `${pathname}${search}` : pathname;
+}
+
+export function getDashboardPageDataPolicy(path: string) {
+  const currentPath = normalizeAdminDashboardPath(path);
+
+  if (currentPath === "/admin") {
+    return {
+      loadOverview: true,
+      loadGuildDirectory: true,
+      monitorGateway: true,
+      refreshOverviewAfterGatewayStart: true,
+    };
+  }
+
+  if (currentPath === "/admin/gateway") {
+    return {
+      loadOverview: false,
+      loadGuildDirectory: false,
+      monitorGateway: true,
+      refreshOverviewAfterGatewayStart: false,
+    };
+  }
+
+  return {
+    loadOverview: false,
+    loadGuildDirectory: true,
+    monitorGateway: false,
+    refreshOverviewAfterGatewayStart: false,
+  };
 }
 
 export function GatewayDetails({ status }: { status: GatewayStatus }) {

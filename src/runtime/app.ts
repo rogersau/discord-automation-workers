@@ -127,7 +127,7 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
 
       if (request.method === "GET" && isAdminDashboardPath(url.pathname)) {
         if (!(await isAdminUiAuthorized(request, options))) {
-          return redirect("/admin/login");
+          return redirect(getAdminLoginLocation(url.pathname));
         }
         return renderAdminShell(true, normalizeAdminDashboardPath(url.pathname));
       }
@@ -507,12 +507,31 @@ async function handleAdminLogin(
     return new Response("Unauthorized", { status: 401 });
   }
 
-  return redirect("/admin", {
+  const nextPath = getRequestedAdminDashboardPath(new URL(request.url).searchParams.get("next"));
+
+  return redirect(nextPath, {
     "set-cookie": await createAdminSessionCookie(
       options.adminSessionSecret,
       { secure: new URL(request.url).protocol === "https:" }
     ),
   });
+}
+
+function getAdminLoginLocation(pathname: string): string {
+  const normalizedPath = normalizeAdminDashboardPath(pathname);
+  if (normalizedPath === "/admin") {
+    return "/admin/login";
+  }
+
+  return `/admin/login?next=${encodeURIComponent(normalizedPath)}`;
+}
+
+function getRequestedAdminDashboardPath(next: string | null): string {
+  if (!next) {
+    return "/admin";
+  }
+
+  return normalizeAdminDashboardPath(next);
 }
 
 async function handleInteractionRequest(

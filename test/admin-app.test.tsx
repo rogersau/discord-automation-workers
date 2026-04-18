@@ -7,6 +7,7 @@ import test from "node:test";
 import { renderToString } from "react-dom/server";
 
 import App, { combineDashboardErrors } from "../src/admin/App";
+import * as AdminAppModule from "../src/admin/App";
 import { GuildPicker } from "../src/admin/components/guild-picker";
 import {
   GuildOverviewCard,
@@ -136,6 +137,62 @@ test("authenticated admin dashboard keeps the overview page free of editor contr
   assert.doesNotMatch(html, /Load ticket panel/i);
   assert.doesNotMatch(html, /Load timed roles/i);
   assert.doesNotMatch(html, /Load blocklist/i);
+});
+
+test("getAdminLoginRequestPath preserves the current deep-link query", () => {
+  const helper = (AdminAppModule as Record<string, unknown>).getAdminLoginRequestPath;
+
+  assert.equal(typeof helper, "function");
+  const getAdminLoginRequestPath = helper as (pathname: string, search: string) => string;
+
+  assert.equal(
+    getAdminLoginRequestPath("/admin/login", "?next=%2Fadmin%2Fgateway"),
+    "/admin/login?next=%2Fadmin%2Fgateway"
+  );
+  assert.equal(getAdminLoginRequestPath("/admin/login", ""), "/admin/login");
+});
+
+test("getDashboardPageDataPolicy scopes loads to the active page", () => {
+  const helper = (AdminAppModule as Record<string, unknown>).getDashboardPageDataPolicy;
+
+  assert.equal(typeof helper, "function");
+  const getDashboardPageDataPolicy = helper as (path: string) => {
+    loadOverview: boolean;
+    loadGuildDirectory: boolean;
+    monitorGateway: boolean;
+    refreshOverviewAfterGatewayStart: boolean;
+  };
+
+  assert.deepEqual(getDashboardPageDataPolicy("/admin"), {
+    loadOverview: true,
+    loadGuildDirectory: true,
+    monitorGateway: true,
+    refreshOverviewAfterGatewayStart: true,
+  });
+  assert.deepEqual(getDashboardPageDataPolicy("/admin/gateway"), {
+    loadOverview: false,
+    loadGuildDirectory: false,
+    monitorGateway: true,
+    refreshOverviewAfterGatewayStart: false,
+  });
+  assert.deepEqual(getDashboardPageDataPolicy("/admin/blocklist"), {
+    loadOverview: false,
+    loadGuildDirectory: true,
+    monitorGateway: false,
+    refreshOverviewAfterGatewayStart: false,
+  });
+  assert.deepEqual(getDashboardPageDataPolicy("/admin/timed-roles"), {
+    loadOverview: false,
+    loadGuildDirectory: true,
+    monitorGateway: false,
+    refreshOverviewAfterGatewayStart: false,
+  });
+  assert.deepEqual(getDashboardPageDataPolicy("/admin/tickets"), {
+    loadOverview: false,
+    loadGuildDirectory: true,
+    monitorGateway: false,
+    refreshOverviewAfterGatewayStart: false,
+  });
 });
 
 test("combineDashboardErrors preserves both overview and gateway failures", () => {

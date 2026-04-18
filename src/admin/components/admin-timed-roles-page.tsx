@@ -28,11 +28,9 @@ interface TimedRoleAssignment {
 export function AdminTimedRolesPage({
   guildDirectory,
   guildLookupError,
-  onUpdated,
 }: {
   guildDirectory: AdminGuildDirectoryEntry[] | null;
   guildLookupError: string | null;
-  onUpdated: () => Promise<void>;
 }) {
   return (
     <section className="space-y-6">
@@ -46,7 +44,6 @@ export function AdminTimedRolesPage({
           <TimedRolesEditor
             guildDirectory={guildDirectory}
             guildLookupError={guildLookupError}
-            onUpdated={onUpdated}
           />
         </CardContent>
       </Card>
@@ -57,11 +54,9 @@ export function AdminTimedRolesPage({
 function TimedRolesEditor({
   guildDirectory,
   guildLookupError,
-  onUpdated,
 }: {
   guildDirectory: AdminGuildDirectoryEntry[] | null;
   guildLookupError: string | null;
-  onUpdated: () => Promise<void>;
 }) {
   const [guildId, setGuildId] = useState("");
   const [userId, setUserId] = useState("");
@@ -121,7 +116,6 @@ function TimedRolesEditor({
 
     setAssignments(data.assignments ?? []);
     setMessage(`Assigned ${roleId} to ${userId} for ${duration}.`);
-    await onUpdated();
   }
 
   async function handleRemove(assignment: TimedRoleAssignment) {
@@ -150,7 +144,6 @@ function TimedRolesEditor({
 
     setAssignments(data.assignments ?? []);
     setMessage(`Removed ${assignment.roleId} from ${assignment.userId}.`);
-    await onUpdated();
   }
 
   return (

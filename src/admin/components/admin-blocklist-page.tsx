@@ -12,11 +12,9 @@ import { Input } from "./ui/input";
 export function AdminBlocklistPage({
   guildDirectory,
   guildLookupError,
-  onUpdated,
 }: {
   guildDirectory: AdminGuildDirectoryEntry[] | null;
   guildLookupError: string | null;
-  onUpdated: () => Promise<void>;
 }) {
   const [guildId, setGuildId] = useState("");
   const [emoji, setEmoji] = useState("");
@@ -54,7 +52,6 @@ export function AdminBlocklistPage({
       const data = await res.json() as { guilds: Record<string, { emojis: string[] }> };
       setCurrentEmojis(data.guilds?.[guildId]?.emojis ?? null);
       setResult(`${action === "add" ? "Blocked" : "Unblocked"} ${emoji} in ${guildId}`);
-      await onUpdated();
     }
   }
 
