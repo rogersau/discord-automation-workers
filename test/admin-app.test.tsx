@@ -8,6 +8,10 @@ import { renderToString } from "react-dom/server";
 
 import App from "../src/admin/App";
 import { GuildPicker } from "../src/admin/components/guild-picker";
+import {
+  GuildOverviewCard,
+  type AdminOverviewGuild,
+} from "../src/admin/components/guild-overview-card";
 import { TicketPanelEditor } from "../src/admin/components/ticket-panel-editor";
 import type { AdminGuildDirectoryEntry } from "../src/runtime/admin-types";
 
@@ -15,6 +19,12 @@ const guildDirectory: AdminGuildDirectoryEntry[] = [
   { guildId: "guild-1", name: "Alpha", label: "Alpha" },
   { guildId: "guild-2", name: "Bravo", label: "Bravo" },
 ];
+
+const overviewGuild: AdminOverviewGuild = {
+  guildId: "guild-1",
+  emojis: ["✅"],
+  timedRoles: [],
+};
 
 test("authenticated admin dashboard keeps guild load controls in a plain shadcn layout", () => {
   const html = renderToString(<App initialAuthenticated />);
@@ -91,6 +101,24 @@ test("guild picker falls back to a raw guild ID input when lookup fails", () => 
 
   assert.match(html, /Guild ID/);
   assert.match(html, /Discord lookup failed/);
+});
+
+test("guild overview card prefers the server name and keeps the guild ID secondary", () => {
+  const html = renderToString(
+    <GuildOverviewCard guild={overviewGuild} guildName="Alpha" />
+  );
+
+  assert.match(html, />Alpha</);
+  assert.match(html, /guild-1/);
+  assert.doesNotMatch(html, /<h3 class="mt-2 text-lg font-semibold tracking-tight">guild-1<\/h3>/);
+});
+
+test("guild overview card falls back to the raw guild ID when no server name is available", () => {
+  const html = renderToString(
+    <GuildOverviewCard guild={overviewGuild} guildName={null} />
+  );
+
+  assert.match(html, />guild-1</);
 });
 
 test("ticket panel editor shows friendly Discord names instead of raw IDs", () => {

@@ -7,6 +7,10 @@ import { cn } from "./lib/utils";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import {
+  GuildOverviewCard,
+  type AdminOverviewGuild,
+} from "./components/guild-overview-card";
 import { GuildPicker } from "./components/guild-picker";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
@@ -41,12 +45,6 @@ interface TimedRoleAssignment {
   roleId: string;
   durationInput: string;
   expiresAtMs: number;
-}
-
-interface AdminOverviewGuild {
-  guildId: string;
-  emojis: string[];
-  timedRoles: TimedRoleAssignment[];
 }
 
 interface AdminOverview {
@@ -190,6 +188,9 @@ export default function App({ initialAuthenticated = false }: Props) {
     const totalTimedRoles = overview
       ? overview.guilds.reduce((sum, guild) => sum + guild.timedRoles.length, 0)
       : null;
+    const guildNamesById = new Map(
+      (guildDirectory ?? []).map((guild) => [guild.guildId, guild.name] as const)
+    );
 
     return (
       <main className="min-h-screen">
@@ -276,7 +277,11 @@ export default function App({ initialAuthenticated = false }: Props) {
                     ) : (
                       <div className="space-y-4">
                         {overview.guilds.map((guild) => (
-                          <GuildOverviewCard key={guild.guildId} guild={guild} />
+                          <GuildOverviewCard
+                            key={guild.guildId}
+                            guild={guild}
+                            guildName={guildNamesById.get(guild.guildId) ?? null}
+                          />
                         ))}
                       </div>
                     )
@@ -407,60 +412,6 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
           </div>
         ))}
       </dl>
-    </div>
-  );
-}
-
-function GuildOverviewCard({ guild }: { guild: AdminOverviewGuild }) {
-  return (
-    <div className="rounded-lg border bg-card p-4 space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">Guild</p>
-          <h3 className="mt-2 text-lg font-semibold tracking-tight">{guild.guildId}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Stored moderation data for this server.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-md border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
-            {guild.emojis.length} blocked emoji{guild.emojis.length === 1 ? "" : "s"}
-          </span>
-          <span className="rounded-md border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
-            {guild.timedRoles.length} timed role{guild.timedRoles.length === 1 ? "" : "s"}
-          </span>
-        </div>
-      </div>
-      <div className="rounded-md border bg-muted/30 p-4">
-        <p className="text-xs font-medium text-muted-foreground">Blocked Emoji</p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Blocked emojis: {guild.emojis.length === 0 ? "None" : guild.emojis.join(" ")}
-        </p>
-      </div>
-      {guild.timedRoles.length === 0 ? (
-        <EmptyState message="No timed roles are active in this guild." />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead>Expires</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {guild.timedRoles.map((assignment) => (
-              <TableRow key={`${assignment.guildId}:${assignment.userId}:${assignment.roleId}`}>
-                <TableCell>{assignment.userId}</TableCell>
-                <TableCell>{assignment.roleId}</TableCell>
-                <TableCell>{assignment.durationInput}</TableCell>
-                <TableCell>{new Date(assignment.expiresAtMs).toLocaleString()}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
     </div>
   );
 }
