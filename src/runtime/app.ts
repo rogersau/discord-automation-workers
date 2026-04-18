@@ -1,5 +1,8 @@
 import { ADMIN_ASSETS, ADMIN_LOGIN_HTML } from "./admin-bundle";
 import type {
+  AdminPermissionCheck,
+  AdminPermissionCheckResponse,
+  AdminPermissionFeature,
   AdminGuildDirectoryEntry,
   AdminGuildDirectoryResponse,
   AppConfigMutation,
@@ -44,6 +47,12 @@ import {
   renderTicketTranscript,
 } from "../tickets";
 import { formatTimedRoleExpiry, parseTimedRoleDuration } from "../timed-roles";
+import {
+  buildBlocklistPermissionChecks,
+  buildTicketPermissionChecks,
+  buildTimedRolePermissionChecks,
+  loadGuildPermissionContext,
+} from "./admin-permissions";
 import type { GatewayController, RuntimeStore } from "./contracts";
 import type {
   BlocklistConfig,
@@ -93,6 +102,7 @@ interface AdminOverviewGuild {
   guildId: string;
   emojis: string[];
   timedRoles: TimedRoleAssignment[];
+  permissionChecks: AdminPermissionCheck[];
 }
 
 export function createRuntimeApp(options: RuntimeAppOptions) {
@@ -179,8 +189,40 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
 
           return Response.json({
             gateway,
-            guilds: buildAdminOverviewGuilds(config, timedRoles),
+            guilds: await buildAdminOverviewGuilds(config, timedRoles, options.discordBotToken),
           });
+        }
+
+        if (request.method === "GET" && url.pathname === "/admin/api/permissions") {
+          const guildId = url.searchParams.get("guildId");
+          const featureParam = url.searchParams.get("feature");
+          if (!guildId) {
+            return Response.json({ error: "guildId is required" }, { status: 400 });
+          }
+          if (!isAdminPermissionFeature(featureParam)) {
+            return Response.json({ error: "feature must be blocklist, timed-roles, or tickets" }, { status: 400 });
+          }
+
+          try {
+            return Response.json(
+              await buildAdminPermissionResponse(
+                guildId,
+                featureParam,
+                options.store,
+                options.discordBotToken
+              )
+            );
+          } catch (error) {
+            return Response.json(
+              {
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to load the bot's current Discord permissions.",
+              },
+              { status: 502 }
+            );
+          }
         }
 
         if (request.method === "GET" && url.pathname === "/admin/api/guilds") {
@@ -412,10 +454,11 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
   }
 }
 
-function buildAdminOverviewGuilds(
+async function buildAdminOverviewGuilds(
   config: BlocklistConfig,
-  timedRoles: TimedRoleAssignment[]
-): AdminOverviewGuild[] {
+  timedRoles: TimedRoleAssignment[],
+  discordBotToken: string
+): Promise<AdminOverviewGuild[]> {
   const guilds = new Map<string, AdminOverviewGuild>();
 
   for (const [guildId, guildConfig] of Object.entries(config.guilds)) {
@@ -423,6 +466,7 @@ function buildAdminOverviewGuilds(
       guildId,
       emojis: [...guildConfig.emojis],
       timedRoles: [],
+      permissionChecks: [],
     });
   }
 
@@ -437,10 +481,78 @@ function buildAdminOverviewGuilds(
       guildId: timedRole.guildId,
       emojis: [],
       timedRoles: [timedRole],
+      permissionChecks: [],
     });
   }
 
+  await Promise.all(
+    [...guilds.values()].map(async (guild) => {
+      if (guild.emojis.length === 0 && guild.timedRoles.length === 0) {
+        return;
+      }
+
+      try {
+        const context = await loadGuildPermissionContext(
+          guild.guildId,
+          config.botUserId,
+          discordBotToken
+        );
+        guild.permissionChecks = [
+          ...(guild.emojis.length > 0 ? buildBlocklistPermissionChecks(context) : []),
+          ...(guild.timedRoles.length > 0 ? buildTimedRolePermissionChecks(context, guild.timedRoles) : []),
+        ].filter((check) => check.status !== "ok");
+      } catch (error) {
+        guild.permissionChecks = [
+          {
+            label: "Discord permission check unavailable",
+            status: "warning",
+            detail:
+              error instanceof Error
+                ? error.message
+                : "Failed to load the bot's current Discord permissions.",
+          },
+        ];
+      }
+    })
+  );
+
   return [...guilds.values()].sort((left, right) => left.guildId.localeCompare(right.guildId));
+}
+
+async function buildAdminPermissionResponse(
+  guildId: string,
+  feature: AdminPermissionFeature,
+  store: RuntimeStore,
+  discordBotToken: string
+): Promise<AdminPermissionCheckResponse> {
+  const config = await store.readConfig();
+  const context = await loadGuildPermissionContext(guildId, config.botUserId, discordBotToken);
+
+  if (feature === "blocklist") {
+    return {
+      guildId,
+      feature,
+      checks: buildBlocklistPermissionChecks(context),
+    };
+  }
+
+  if (feature === "timed-roles") {
+    return {
+      guildId,
+      feature,
+      checks: buildTimedRolePermissionChecks(context, await store.listTimedRolesByGuild(guildId)),
+    };
+  }
+
+  return {
+    guildId,
+    feature,
+    checks: buildTicketPermissionChecks(context, await store.readTicketPanelConfig(guildId)),
+  };
+}
+
+function isAdminPermissionFeature(value: string | null): value is AdminPermissionFeature {
+  return value === "blocklist" || value === "timed-roles" || value === "tickets";
 }
 
 function buildAdminGuildDirectory(

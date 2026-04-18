@@ -47,6 +47,7 @@ export interface DiscordChannelResource {
   type: number;
   parent_id: string | null;
   position: number | null;
+  permission_overwrites?: DiscordPermissionOverwrite[];
 }
 
 export interface DiscordRoleResource {
@@ -54,6 +55,20 @@ export interface DiscordRoleResource {
   name: string;
   permissions: string;
   position: number;
+}
+
+export interface DiscordPermissionOverwrite {
+  id: string;
+  type: number;
+  allow: string;
+  deny: string;
+}
+
+export interface DiscordGuildMemberResource {
+  user?: {
+    id: string;
+  };
+  roles: string[];
 }
 
 export interface DiscordAllowedMentions {
@@ -167,6 +182,28 @@ export async function listBotGuilds(
     guildId: id,
     name,
   }));
+}
+
+export async function getGuildPermissionResources(
+  guildId: string,
+  botUserId: string,
+  botToken: string
+): Promise<{
+  channels: DiscordChannelResource[];
+  roles: DiscordRoleResource[];
+  member: DiscordGuildMemberResource;
+}> {
+  const [channels, roles, member] = await Promise.all([
+    discordGetJson<DiscordChannelResource[]>(`${DISCORD_API}/guilds/${guildId}/channels`, botToken),
+    discordGetJson<DiscordRoleResource[]>(`${DISCORD_API}/guilds/${guildId}/roles`, botToken),
+    discordGetJson<DiscordGuildMemberResource>(`${DISCORD_API}/guilds/${guildId}/members/${botUserId}`, botToken),
+  ]);
+
+  return {
+    channels,
+    roles,
+    member,
+  };
 }
 
 export async function createTicketChannel(

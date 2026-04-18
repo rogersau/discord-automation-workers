@@ -25,6 +25,7 @@ const overviewGuild: AdminOverviewGuild = {
   guildId: "guild-1",
   emojis: ["✅"],
   timedRoles: [],
+  permissionChecks: [],
 };
 
 const permissionSensitiveOverviewGuild: AdminOverviewGuild = {
@@ -37,6 +38,18 @@ const permissionSensitiveOverviewGuild: AdminOverviewGuild = {
       roleId: "role-2",
       durationInput: "2h",
       expiresAtMs: 7_200_000,
+    },
+  ],
+  permissionChecks: [
+    {
+      label: "Manage Messages in text channels",
+      status: "warning",
+      detail: "Manage Messages is missing in 1 of 2 visible text channels, so reaction cleanup can fail there.",
+    },
+    {
+      label: "Timed role targets below the bot",
+      status: "error",
+      detail: "1 tracked timed role is at or above the bot's highest role.",
     },
   ],
 };
@@ -119,7 +132,8 @@ test("authenticated admin dashboard renders the blocklist workspace on /admin/bl
   assert.match(html, /id="sidebar-guild-query"/);
   assert.match(html, /Load blocklist/i);
   assert.match(html, /Apply/i);
-  assert.match(html, /Manage Messages/i);
+  assert.match(html, /live Discord permission check/i);
+  assert.doesNotMatch(html, /Manage Messages/i);
   assert.doesNotMatch(html, /id="bl-guild-query"/);
   assert.doesNotMatch(html, /Add timed role/i);
   assert.doesNotMatch(html, /Load ticket panel/i);
@@ -135,8 +149,9 @@ test("authenticated admin dashboard renders the timed roles workspace on /admin/
   assert.match(html, /Load timed roles/i);
   assert.match(html, /Add timed role/i);
   assert.match(html, /Duration/i);
-  assert.match(html, /Manage Roles/i);
-  assert.match(html, /highest role/i);
+  assert.match(html, /live Discord permission check/i);
+  assert.doesNotMatch(html, /Manage Roles/i);
+  assert.doesNotMatch(html, /highest role/i);
   assert.doesNotMatch(html, /id="tr-guild-query"/);
   assert.doesNotMatch(html, /Load blocklist/i);
   assert.doesNotMatch(html, /Load ticket panel/i);
@@ -149,8 +164,9 @@ test("authenticated admin dashboard renders the tickets workspace on /admin/tick
   assert.match(html, /id="sidebar-guild-query"/);
   assert.match(html, /Load ticket panel/i);
   assert.match(html, /Ticket Panels|Tickets/i);
-  assert.match(html, /channel access/i);
-  assert.match(html, /support roles/i);
+  assert.match(html, /live Discord permission check/i);
+  assert.doesNotMatch(html, /channel access/i);
+  assert.doesNotMatch(html, /support roles/i);
   assert.doesNotMatch(html, /id="tp-guild-query"/);
   assert.doesNotMatch(html, /Load blocklist/i);
   assert.doesNotMatch(html, /Add timed role/i);
@@ -331,9 +347,9 @@ test("guild overview card highlights permission-sensitive moderation features", 
   );
 
   assert.match(html, /Permission watch/);
-  assert.match(html, /Manage Messages needed/);
-  assert.match(html, /Manage Roles needed/);
-  assert.match(html, /highest role is not above the target role/i);
+  assert.match(html, /Manage Messages in text channels/);
+  assert.match(html, /Timed role targets below the bot/);
+  assert.match(html, /reaction cleanup can fail there/i);
 });
 
 test("ticket panel editor shows friendly Discord names instead of raw IDs", () => {

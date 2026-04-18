@@ -60,10 +60,7 @@ export function AdminBlocklistPage({
 
       <Card>
         <CardContent className="space-y-5 pt-6">
-          <PermissionNotice
-            description="Blocked emoji cleanup can fail if the bot cannot remove reactions in the affected channels."
-            checks={["Manage Messages"]}
-          />
+          <PermissionNotice selectedGuildId={selectedGuildId} feature="blocklist" />
           {!trimmedGuildId ? (
             <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
               Select a server from the sidebar to load or update its blocklist.

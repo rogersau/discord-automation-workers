@@ -23,10 +23,7 @@ export function AdminTicketsPage({
 
       <Card>
         <CardContent className="space-y-5 pt-6">
-          <PermissionNotice
-            description="Ticket publishing and ticket channel setup can fail if the bot is missing channel access or cannot see the configured support roles."
-            checks={["Channel access", "Support roles"]}
-          />
+          <PermissionNotice selectedGuildId={selectedGuildId} feature="tickets" />
           <TicketPanelsEditor selectedGuildId={selectedGuildId} />
         </CardContent>
       </Card>

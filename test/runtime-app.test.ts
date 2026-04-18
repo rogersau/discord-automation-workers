@@ -403,6 +403,12 @@ test("createRuntimeApp returns dashboard data and blocklist mutations through se
 });
 
 test("createRuntimeApp exposes dashboard overview data for discoverability in the admin UI", async () => {
+  const originalFetch = globalThis.fetch;
+  const VIEW_CHANNEL = 1n << 10n;
+  const SEND_MESSAGES = 1n << 11n;
+  const MANAGE_MESSAGES = 1n << 13n;
+  const MANAGE_ROLES = 1n << 28n;
+  const BOT_ROLE_PERMISSIONS = (VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES | MANAGE_ROLES).toString();
   const timedRoles: TimedRoleAssignment[] = [
     {
       guildId: "guild-1",
@@ -419,93 +425,177 @@ test("createRuntimeApp exposes dashboard overview data for discoverability in th
       expiresAtMs: 7_200_000,
     },
   ];
-  const app = createRuntimeApp({
-    discordPublicKey: "a".repeat(64),
-    discordBotToken: "bot-token",
-    adminUiPassword: "let-me-in",
-    adminSessionSecret: "session-secret",
-    verifyDiscordRequest: async () => true,
-    store: {
-      async readConfig() {
-        return {
-          guilds: {
-            "guild-1": { enabled: true, emojis: ["✅", "🍎"] },
-            "guild-3": { enabled: true, emojis: ["🚫"] },
-          },
-          botUserId: "bot-user-id",
-        };
-      },
-      async listTimedRoles() {
-        return timedRoles;
-      },
-    } as unknown as RuntimeStore,
-    gateway: {
-      async status() {
-        return {
-          status: "ready",
-          sessionId: "session-123",
-          resumeGatewayUrl: "wss://resume.discord.gg/?v=10&encoding=json",
-          lastSequence: 99,
-          backoffAttempt: 0,
-          lastError: null,
-          heartbeatIntervalMs: 45_000,
-        };
-      },
-    } as GatewayController,
-  });
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
-  const cookie = await createAdminSessionCookie("session-secret");
-  const response = await app.fetch(
-    new Request("https://runtime.example/admin/api/overview", {
-      headers: { cookie },
-    })
-  );
+    if (url.endsWith("/guilds/guild-1/channels")) {
+      return Response.json([
+        { id: "channel-1", name: "general", type: 0, parent_id: null, position: 0, permission_overwrites: [] },
+        {
+          id: "channel-2",
+          name: "staff",
+          type: 0,
+          parent_id: null,
+          position: 1,
+          permission_overwrites: [{ id: "guild-1", type: 0, allow: "0", deny: MANAGE_MESSAGES.toString() }],
+        },
+      ]);
+    }
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    gateway: {
-      status: "ready",
-      sessionId: "session-123",
-      resumeGatewayUrl: "wss://resume.discord.gg/?v=10&encoding=json",
-      lastSequence: 99,
-      backoffAttempt: 0,
-      lastError: null,
-      heartbeatIntervalMs: 45_000,
-    },
-    guilds: [
-      {
-        guildId: "guild-1",
-        emojis: ["✅", "🍎"],
-        timedRoles: [
-          {
-            guildId: "guild-1",
-            userId: "user-1",
-            roleId: "role-1",
-            durationInput: "1h",
-            expiresAtMs: 3_600_000,
-          },
-        ],
+    if (url.endsWith("/guilds/guild-1/roles")) {
+      return Response.json([
+        { id: "guild-1", name: "@everyone", permissions: VIEW_CHANNEL.toString(), position: 0 },
+        { id: "role-1", name: "Member", permissions: VIEW_CHANNEL.toString(), position: 2 },
+        { id: "role-bot-1", name: "Bot", permissions: BOT_ROLE_PERMISSIONS, position: 5 },
+      ]);
+    }
+
+    if (url.endsWith("/guilds/guild-1/members/bot-user-id")) {
+      return Response.json({ user: { id: "bot-user-id" }, roles: ["role-bot-1"] });
+    }
+
+    if (url.endsWith("/guilds/guild-2/channels")) {
+      return Response.json([]);
+    }
+
+    if (url.endsWith("/guilds/guild-2/roles")) {
+      return Response.json([
+        { id: "guild-2", name: "@everyone", permissions: VIEW_CHANNEL.toString(), position: 0 },
+        { id: "role-bot-2", name: "Bot", permissions: MANAGE_ROLES.toString(), position: 5 },
+        { id: "role-2", name: "Senior", permissions: VIEW_CHANNEL.toString(), position: 6 },
+      ]);
+    }
+
+    if (url.endsWith("/guilds/guild-2/members/bot-user-id")) {
+      return Response.json({ user: { id: "bot-user-id" }, roles: ["role-bot-2"] });
+    }
+
+    if (url.endsWith("/guilds/guild-3/channels")) {
+      return Response.json([
+        { id: "channel-3", name: "general", type: 0, parent_id: null, position: 0, permission_overwrites: [] },
+      ]);
+    }
+
+    if (url.endsWith("/guilds/guild-3/roles")) {
+      return Response.json([
+        { id: "guild-3", name: "@everyone", permissions: VIEW_CHANNEL.toString(), position: 0 },
+        { id: "role-bot-3", name: "Bot", permissions: BOT_ROLE_PERMISSIONS, position: 5 },
+      ]);
+    }
+
+    if (url.endsWith("/guilds/guild-3/members/bot-user-id")) {
+      return Response.json({ user: { id: "bot-user-id" }, roles: ["role-bot-3"] });
+    }
+
+    throw new Error(`Unexpected Discord call: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const app = createRuntimeApp({
+      discordPublicKey: "a".repeat(64),
+      discordBotToken: "bot-token",
+      adminUiPassword: "let-me-in",
+      adminSessionSecret: "session-secret",
+      verifyDiscordRequest: async () => true,
+      store: {
+        async readConfig() {
+          return {
+            guilds: {
+              "guild-1": { enabled: true, emojis: ["✅", "🍎"] },
+              "guild-3": { enabled: true, emojis: ["🚫"] },
+            },
+            botUserId: "bot-user-id",
+          };
+        },
+        async listTimedRoles() {
+          return timedRoles;
+        },
+      } as unknown as RuntimeStore,
+      gateway: {
+        async status() {
+          return {
+            status: "ready",
+            sessionId: "session-123",
+            resumeGatewayUrl: "wss://resume.discord.gg/?v=10&encoding=json",
+            lastSequence: 99,
+            backoffAttempt: 0,
+            lastError: null,
+            heartbeatIntervalMs: 45_000,
+          };
+        },
+      } as GatewayController,
+    });
+
+    const cookie = await createAdminSessionCookie("session-secret");
+    const response = await app.fetch(
+      new Request("https://runtime.example/admin/api/overview", {
+        headers: { cookie },
+      })
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      gateway: {
+        status: "ready",
+        sessionId: "session-123",
+        resumeGatewayUrl: "wss://resume.discord.gg/?v=10&encoding=json",
+        lastSequence: 99,
+        backoffAttempt: 0,
+        lastError: null,
+        heartbeatIntervalMs: 45_000,
       },
-      {
-        guildId: "guild-2",
-        emojis: [],
-        timedRoles: [
-          {
-            guildId: "guild-2",
-            userId: "user-2",
-            roleId: "role-2",
-            durationInput: "2h",
-            expiresAtMs: 7_200_000,
-          },
-        ],
-      },
-      {
-        guildId: "guild-3",
-        emojis: ["🚫"],
-        timedRoles: [],
-      },
-    ],
-  });
+      guilds: [
+        {
+          guildId: "guild-1",
+          emojis: ["✅", "🍎"],
+          timedRoles: [
+            {
+              guildId: "guild-1",
+              userId: "user-1",
+              roleId: "role-1",
+              durationInput: "1h",
+              expiresAtMs: 3_600_000,
+            },
+          ],
+          permissionChecks: [
+            {
+              label: "Manage Messages in text channels",
+              status: "warning",
+              detail: "Manage Messages is missing in 1 of 2 visible text channels, so reaction cleanup can fail there.",
+            },
+          ],
+        },
+        {
+          guildId: "guild-2",
+          emojis: [],
+          timedRoles: [
+            {
+              guildId: "guild-2",
+              userId: "user-2",
+              roleId: "role-2",
+              durationInput: "2h",
+              expiresAtMs: 7_200_000,
+            },
+          ],
+          permissionChecks: [
+            {
+              label: "Timed role targets below the bot",
+              status: "error",
+              detail: "1 tracked timed role is at or above the bot's highest role.",
+            },
+          ],
+        },
+        {
+          guildId: "guild-3",
+          emojis: ["🚫"],
+          timedRoles: [],
+          permissionChecks: [],
+        },
+      ],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("createRuntimeApp exposes the bot guild directory for the admin UI", async () => {
@@ -553,6 +643,105 @@ test("createRuntimeApp exposes the bot guild directory for the admin UI", async 
         { guildId: "guild-2", name: "Alpha", label: "Alpha (guild-2)" },
         { guildId: "guild-3", name: "Alpha", label: "Alpha (guild-3)" },
         { guildId: "guild-1", name: "Bravo", label: "Bravo" },
+      ],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createRuntimeApp exposes live blocklist permission diagnostics through session auth", async () => {
+  const originalFetch = globalThis.fetch;
+  const VIEW_CHANNEL = 1n << 10n;
+  const SEND_MESSAGES = 1n << 11n;
+  const MANAGE_MESSAGES = 1n << 13n;
+  const BOT_ROLE_PERMISSIONS = (VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES).toString();
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+    if (url.endsWith("/guilds/guild-1/channels")) {
+      return Response.json([
+        {
+          id: "channel-1",
+          name: "general",
+          type: 0,
+          parent_id: null,
+          position: 0,
+          permission_overwrites: [],
+        },
+        {
+          id: "channel-2",
+          name: "staff",
+          type: 0,
+          parent_id: null,
+          position: 1,
+          permission_overwrites: [
+            {
+              id: "guild-1",
+              type: 0,
+              allow: "0",
+              deny: MANAGE_MESSAGES.toString(),
+            },
+          ],
+        },
+      ]);
+    }
+
+    if (url.endsWith("/guilds/guild-1/roles")) {
+      return Response.json([
+        { id: "guild-1", name: "@everyone", permissions: VIEW_CHANNEL.toString(), position: 0 },
+        { id: "role-bot", name: "Bot", permissions: BOT_ROLE_PERMISSIONS, position: 5 },
+      ]);
+    }
+
+    if (url.endsWith("/guilds/guild-1/members/bot-user-id")) {
+      return Response.json({
+        user: { id: "bot-user-id" },
+        roles: ["role-bot"],
+      });
+    }
+
+    throw new Error(`Unexpected Discord call: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const app = createRuntimeApp({
+      discordPublicKey: "a".repeat(64),
+      discordBotToken: "bot-token",
+      adminUiPassword: "let-me-in",
+      adminSessionSecret: "session-secret",
+      verifyDiscordRequest: async () => true,
+      store: {
+        async readConfig() {
+          return { guilds: { "guild-1": { enabled: true, emojis: ["🚫"] } }, botUserId: "bot-user-id" };
+        },
+      } as unknown as RuntimeStore,
+      gateway: {} as GatewayController,
+    });
+
+    const cookie = await createAdminSessionCookie("session-secret");
+    const response = await app.fetch(
+      new Request("https://runtime.example/admin/api/permissions?guildId=guild-1&feature=blocklist", {
+        headers: { cookie },
+      })
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      guildId: "guild-1",
+      feature: "blocklist",
+      checks: [
+        {
+          label: "Visible text channels",
+          status: "ok",
+          detail: "The bot can view 2 of 2 text channels in this server.",
+        },
+        {
+          label: "Manage Messages in text channels",
+          status: "warning",
+          detail: "Manage Messages is missing in 1 of 2 visible text channels, so reaction cleanup can fail there.",
+        },
       ],
     });
   } finally {

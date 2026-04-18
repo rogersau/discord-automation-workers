@@ -19,6 +19,22 @@ export interface AdminGuildDirectoryResponse {
   guilds: AdminGuildDirectoryEntry[];
 }
 
+export type AdminPermissionFeature = "blocklist" | "timed-roles" | "tickets";
+
+export type AdminPermissionCheckStatus = "ok" | "warning" | "error";
+
+export interface AdminPermissionCheck {
+  label: string;
+  status: AdminPermissionCheckStatus;
+  detail: string;
+}
+
+export interface AdminPermissionCheckResponse {
+  guildId: string;
+  feature: AdminPermissionFeature;
+  checks: AdminPermissionCheck[];
+}
+
 export type TicketPanelConfigPayload = TicketPanelConfig;
 
 export type TicketPanelConfigResource = TicketPanelConfig;

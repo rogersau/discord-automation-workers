@@ -38,10 +38,7 @@ export function AdminTimedRolesPage({
 
       <Card>
         <CardContent className="space-y-5 pt-6">
-          <PermissionNotice
-            description="Timed role changes can fail if the bot cannot manage roles or if its highest role is below the target role."
-            checks={["Manage Roles", "Highest role above target"]}
-          />
+          <PermissionNotice selectedGuildId={selectedGuildId} feature="timed-roles" />
           <TimedRolesEditor selectedGuildId={selectedGuildId} />
         </CardContent>
       </Card>
