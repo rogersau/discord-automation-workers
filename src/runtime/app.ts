@@ -10,6 +10,10 @@ import {
   hasValidAdminSession,
   isValidAdminPassword,
 } from "./admin-auth";
+import {
+  isAdminDashboardPath,
+  normalizeAdminDashboardPath,
+} from "../admin/dashboard-routes";
 import { normalizeEmoji } from "../blocklist";
 import {
   addGuildMemberRole,
@@ -121,11 +125,11 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
         });
       }
 
-      if (request.method === "GET" && url.pathname === "/admin") {
+      if (request.method === "GET" && isAdminDashboardPath(url.pathname)) {
         if (!(await isAdminUiAuthorized(request, options))) {
           return redirect("/admin/login");
         }
-        return renderAdminShell(true);
+        return renderAdminShell(true, normalizeAdminDashboardPath(url.pathname));
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/admin/assets/")) {
@@ -464,10 +468,17 @@ function buildAdminGuildDirectory(
     }));
 }
 
-function renderAdminShell(authenticated = false): Response {
-  const html = authenticated
-    ? ADMIN_LOGIN_HTML.replace('<div id="admin-root"></div>', '<div id="admin-root" data-authenticated="true"></div>')
-    : ADMIN_LOGIN_HTML;
+function renderAdminShell(authenticated = false, initialPath = "/admin"): Response {
+  const attributes = [
+    authenticated ? 'data-authenticated="true"' : "",
+    `data-initial-path="${initialPath}"`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const html = ADMIN_LOGIN_HTML.replace(
+    '<div id="admin-root"></div>',
+    `<div id="admin-root" ${attributes}></div>`
+  );
   return new Response(html, {
     status: 200,
     headers: { "content-type": "text/html; charset=utf-8" },

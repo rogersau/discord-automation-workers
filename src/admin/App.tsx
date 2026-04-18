@@ -59,10 +59,15 @@ interface GuildSelectionProps {
 
 interface Props {
   initialAuthenticated?: boolean;
+  initialPath?: string;
 }
 
-export default function App({ initialAuthenticated = false }: Props) {
+export default function App({
+  initialAuthenticated = false,
+  initialPath = "/admin",
+}: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
+  const [currentPath] = useState(initialPath);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
@@ -193,7 +198,7 @@ export default function App({ initialAuthenticated = false }: Props) {
     );
 
     return (
-      <main className="min-h-screen">
+      <main className="min-h-screen" data-current-path={currentPath}>
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
           <header className="flex flex-col gap-4 rounded-lg border bg-card p-6 text-card-foreground shadow-sm lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">

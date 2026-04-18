@@ -8,14 +8,17 @@ import test from "node:test";
 import { SLASH_COMMAND_DEFINITIONS } from "../src/discord-commands";
 import worker from "../src/index";
 
-test("worker no longer exposes the legacy /admin/blocklist route", async () => {
+test("worker serves the admin shell for nested dashboard routes", async () => {
   const response = await worker.fetch(
     new Request("https://worker.example/admin/blocklist"),
     createEnv(),
     {} as ExecutionContext
   );
 
-  assert.equal(response.status, 404);
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /data-authenticated="true"/);
+  assert.match(html, /data-initial-path="\/admin\/blocklist"/);
 });
 
 test("worker proxies /admin/gateway/status to the gateway session durable object", async () => {

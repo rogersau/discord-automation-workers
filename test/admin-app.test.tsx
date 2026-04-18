@@ -72,6 +72,15 @@ test("authenticated admin dashboard labels guild workflows as server controls", 
   assert.doesNotMatch(html, /Guild ID/);
 });
 
+
+test("authenticated admin dashboard keeps the initial dashboard path available to the client shell", () => {
+  const html = renderToString(
+    <App initialAuthenticated initialPath="/admin/tickets" />
+  );
+
+  assert.match(html, /data-current-path="\/admin\/tickets"/);
+});
+
 test("guild picker renders searchable server labels from the guild directory", () => {
   const html = renderToString(
     <GuildPicker
