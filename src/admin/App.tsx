@@ -7,6 +7,7 @@ import { cn } from "./lib/utils";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import { GuildPicker } from "./components/guild-picker";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import {
@@ -19,6 +20,10 @@ import {
 } from "./components/ui/table";
 import { TicketPanelEditor, type GuildResources } from "./components/ticket-panel-editor";
 import type { TicketPanelConfig } from "../types";
+import type {
+  AdminGuildDirectoryEntry,
+  AdminGuildDirectoryResponse,
+} from "../runtime/admin-types";
 
 interface GatewayStatus {
   status: string;
@@ -49,6 +54,11 @@ interface AdminOverview {
   guilds: AdminOverviewGuild[];
 }
 
+interface GuildSelectionProps {
+  guildDirectory: AdminGuildDirectoryEntry[] | null;
+  guildLookupError: string | null;
+}
+
 interface Props {
   initialAuthenticated?: boolean;
 }
@@ -61,6 +71,9 @@ export default function App({ initialAuthenticated = false }: Props) {
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [guildDirectory, setGuildDirectory] =
+    useState<AdminGuildDirectoryEntry[] | null>(null);
+  const [guildLookupError, setGuildLookupError] = useState<string | null>(null);
   const gatewayMonitorRef = useRef<GatewayStatusMonitor | null>(null);
 
   const loadOverview = useCallback(async () => {
@@ -82,6 +95,8 @@ export default function App({ initialAuthenticated = false }: Props) {
       setOverview(null);
       setGatewayError(null);
       setOverviewError(null);
+      setGuildDirectory(null);
+      setGuildLookupError(null);
       return;
     }
 
@@ -121,6 +136,35 @@ export default function App({ initialAuthenticated = false }: Props) {
       monitor.stop();
     };
   }, [authenticated, loadOverview]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      setGuildDirectory(null);
+      setGuildLookupError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const response = await readJsonOrThrow<AdminGuildDirectoryResponse>("/admin/api/guilds");
+        if (!cancelled) {
+          setGuildDirectory(response.guilds);
+          setGuildLookupError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setGuildDirectory(null);
+          setGuildLookupError(describeError(error));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
 
   async function handleLogin() {
     setLoginError(false);
@@ -252,7 +296,11 @@ export default function App({ initialAuthenticated = false }: Props) {
               />
               <Card>
                 <CardContent className="pt-6">
-                  <BlocklistEditor onUpdated={loadOverview} />
+                  <BlocklistEditor
+                    guildDirectory={guildDirectory}
+                    guildLookupError={guildLookupError}
+                    onUpdated={loadOverview}
+                  />
                 </CardContent>
               </Card>
             </section>
@@ -264,7 +312,11 @@ export default function App({ initialAuthenticated = false }: Props) {
               />
               <Card>
                 <CardContent className="pt-6">
-                  <TimedRolesEditor onUpdated={loadOverview} />
+                  <TimedRolesEditor
+                    guildDirectory={guildDirectory}
+                    guildLookupError={guildLookupError}
+                    onUpdated={loadOverview}
+                  />
                 </CardContent>
               </Card>
             </section>
@@ -276,7 +328,10 @@ export default function App({ initialAuthenticated = false }: Props) {
               />
               <Card>
                 <CardContent className="pt-6">
-                  <TicketPanelsEditor />
+                  <TicketPanelsEditor
+                    guildDirectory={guildDirectory}
+                    guildLookupError={guildLookupError}
+                  />
                 </CardContent>
               </Card>
             </section>
@@ -410,7 +465,11 @@ function GuildOverviewCard({ guild }: { guild: AdminOverviewGuild }) {
   );
 }
 
-function BlocklistEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
+function BlocklistEditor({
+  guildDirectory,
+  guildLookupError,
+  onUpdated,
+}: GuildSelectionProps & { onUpdated: () => Promise<void> }) {
   const [guildId, setGuildId] = useState("");
   const [emoji, setEmoji] = useState("");
   const [action, setAction] = useState<"add" | "remove">("add");
@@ -450,18 +509,16 @@ function BlocklistEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
     <div className="space-y-4">
       <EditorPanel>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1.05fr)_minmax(14rem,0.95fr)]">
-          <FormField label="Guild ID" htmlFor="bl-guild">
-            <Input
-              id="bl-guild"
-              value={guildId}
-              onChange={(e) => { setGuildId(e.target.value); setCurrentEmojis(null); }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void loadBlocklist(guildId);
-                }
-              }}
-            />
-          </FormField>
+          <GuildPicker
+            id="bl-guild"
+            value={guildId}
+            guildDirectory={guildDirectory}
+            loadError={guildLookupError}
+            onChange={(nextGuildId) => {
+              setGuildId(nextGuildId);
+              setCurrentEmojis(null);
+            }}
+          />
           <FormField label="Emoji" htmlFor="bl-emoji">
             <Input id="bl-emoji" value={emoji} onChange={(e) => setEmoji(e.target.value)} />
           </FormField>
@@ -517,7 +574,11 @@ function BlocklistEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
   );
 }
 
-function TimedRolesEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
+function TimedRolesEditor({
+  guildDirectory,
+  guildLookupError,
+  onUpdated,
+}: GuildSelectionProps & { onUpdated: () => Promise<void> }) {
   const [guildId, setGuildId] = useState("");
   const [userId, setUserId] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -604,21 +665,16 @@ function TimedRolesEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
     <div className="space-y-4">
       <EditorPanel>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(8rem,0.8fr)]">
-          <FormField label="Guild ID" htmlFor="tr-guild">
-            <Input
-              id="tr-guild"
-              value={guildId}
-              onChange={(e) => {
-                setGuildId(e.target.value);
-                setAssignments(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void loadAssignments(guildId);
-                }
-              }}
-            />
-          </FormField>
+          <GuildPicker
+            id="tr-guild"
+            value={guildId}
+            guildDirectory={guildDirectory}
+            loadError={guildLookupError}
+            onChange={(nextGuildId) => {
+              setGuildId(nextGuildId);
+              setAssignments(null);
+            }}
+          />
           <FormField label="User ID" htmlFor="tr-user">
             <Input id="tr-user" value={userId} onChange={(e) => setUserId(e.target.value)} />
           </FormField>
@@ -696,7 +752,10 @@ function TimedRolesEditor({ onUpdated }: { onUpdated: () => Promise<void> }) {
   );
 }
 
-function TicketPanelsEditor() {
+function TicketPanelsEditor({
+  guildDirectory,
+  guildLookupError,
+}: GuildSelectionProps) {
   const [guildId, setGuildId] = useState("");
   const [guildResources, setGuildResources] = useState<GuildResources | null>(null);
   const [panelConfig, setPanelConfig] = useState<TicketPanelConfig | null>(null);
@@ -773,26 +832,17 @@ function TicketPanelsEditor() {
   return (
     <div className="space-y-4">
       <div className="space-y-4 rounded-lg border bg-muted/30 p-4 md:p-6">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="min-w-0 space-y-2">
-            <Label htmlFor="tp-guild">Guild ID</Label>
-            <Input
-              id="tp-guild"
-              value={guildId}
-              onChange={(e) => {
-                setGuildId(e.target.value);
-                setGuildResources(null);
-                setPanelConfig(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !loading) {
-                  void loadResources(guildId);
-                }
-              }}
-              placeholder="Enter a guild ID to load its ticket panel"
-            />
-          </div>
-        </div>
+        <GuildPicker
+          id="tp-guild"
+          value={guildId}
+          guildDirectory={guildDirectory}
+          loadError={guildLookupError}
+          onChange={(nextGuildId) => {
+            setGuildId(nextGuildId);
+            setGuildResources(null);
+            setPanelConfig(null);
+          }}
+        />
         <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:justify-end">
           <Button
             size="sm"

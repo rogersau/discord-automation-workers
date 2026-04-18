@@ -7,7 +7,14 @@ import test from "node:test";
 import { renderToString } from "react-dom/server";
 
 import App from "../src/admin/App";
+import { GuildPicker } from "../src/admin/components/guild-picker";
 import { TicketPanelEditor } from "../src/admin/components/ticket-panel-editor";
+import type { AdminGuildDirectoryEntry } from "../src/runtime/admin-types";
+
+const guildDirectory: AdminGuildDirectoryEntry[] = [
+  { guildId: "guild-1", name: "Alpha", label: "Alpha" },
+  { guildId: "guild-2", name: "Bravo", label: "Bravo" },
+];
 
 test("authenticated admin dashboard keeps guild load controls in a plain shadcn layout", () => {
   const html = renderToString(<App initialAuthenticated />);
@@ -43,6 +50,47 @@ test("authenticated admin dashboard renders the ticketing section", () => {
   const html = renderToString(<App initialAuthenticated />);
   assert.match(html, /Ticket Panels/i);
   assert.match(html, /Configure ticket buttons, questions, and transcript routing/i);
+});
+
+test("authenticated admin dashboard labels guild workflows as server controls", () => {
+  const html = renderToString(<App initialAuthenticated />);
+
+  assert.match(html, /Blocklist/i);
+  assert.match(html, /Timed Roles/i);
+  assert.match(html, /Ticket Panels/i);
+  assert.match(html, /Server/);
+  assert.doesNotMatch(html, /Guild ID/);
+});
+
+test("guild picker renders searchable server labels from the guild directory", () => {
+  const html = renderToString(
+    <GuildPicker
+      id="guild-picker"
+      value="guild-2"
+      guildDirectory={guildDirectory}
+      loadError={null}
+      onChange={() => {}}
+    />
+  );
+
+  assert.match(html, /Filter servers/);
+  assert.match(html, />Alpha</);
+  assert.match(html, />Bravo</);
+});
+
+test("guild picker falls back to a raw guild ID input when lookup fails", () => {
+  const html = renderToString(
+    <GuildPicker
+      id="guild-picker"
+      value="guild-2"
+      guildDirectory={null}
+      loadError="Discord lookup failed"
+      onChange={() => {}}
+    />
+  );
+
+  assert.match(html, /Guild ID/);
+  assert.match(html, /Discord lookup failed/);
 });
 
 test("ticket panel editor shows friendly Discord names instead of raw IDs", () => {
