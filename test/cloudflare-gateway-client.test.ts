@@ -34,3 +34,21 @@ test("createCloudflareGatewayClient wraps gateway status and bootstrap calls", a
     { url: "https://gateway-session/start", method: "POST" },
   ]);
 });
+
+test("createCloudflareGatewayClient throws descriptive error on non-ok response", async () => {
+  const gatewayClient = createCloudflareGatewayClient({
+    fetch() {
+      return Promise.resolve(new Response("Service Unavailable", { status: 503 }) as any);
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      await gatewayClient.status();
+    },
+    {
+      name: "Error",
+      message: /Cloudflare gateway request failed: 503 Service Unavailable/,
+    }
+  );
+});

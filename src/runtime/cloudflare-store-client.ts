@@ -1,13 +1,15 @@
 import type { BlocklistConfig, TimedRoleAssignment, TicketPanelConfig, TicketInstance } from "../types";
 import type { GatewaySnapshot } from "./contracts";
 
-export function createCloudflareStoreClient(storeStub: { fetch: (...args: any[]) => Promise<any> }) {
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+export function createCloudflareStoreClient(storeStub: { fetch: FetchLike }) {
   return {
     async readConfig(): Promise<BlocklistConfig> {
-      return readJson(storeStub.fetch("https://moderation-store/config"));
+      return readJson<BlocklistConfig>(storeStub.fetch("https://moderation-store/config"));
     },
     async applyGuildEmojiMutation(body: { guildId: string; emoji: string; action: "add" | "remove" }): Promise<BlocklistConfig> {
-      return readJson(
+      return readJson<BlocklistConfig>(
         storeStub.fetch("https://moderation-store/guild-emoji", {
           method: "POST",
           body: JSON.stringify(body),
@@ -23,7 +25,7 @@ export function createCloudflareStoreClient(storeStub: { fetch: (...args: any[])
       );
     },
     async readTicketPanelConfig(guildId: string): Promise<TicketPanelConfig | null> {
-      return readJson(
+      return readJson<TicketPanelConfig | null>(
         storeStub.fetch(`https://moderation-store/ticket-panel?guildId=${encodeURIComponent(guildId)}`)
       );
     },
@@ -52,7 +54,7 @@ export function createCloudflareStoreClient(storeStub: { fetch: (...args: any[])
       );
     },
     async readOpenTicketByChannel(guildId: string, channelId: string): Promise<TicketInstance | null> {
-      return readJson(
+      return readJson<TicketInstance | null>(
         storeStub.fetch(
           `https://moderation-store/ticket-instance/open?guildId=${encodeURIComponent(guildId)}&channelId=${encodeURIComponent(channelId)}`
         )
@@ -73,10 +75,10 @@ export function createCloudflareStoreClient(storeStub: { fetch: (...args: any[])
       );
     },
     async listTimedRoles(): Promise<TimedRoleAssignment[]> {
-      return readJson(storeStub.fetch("https://moderation-store/timed-roles"));
+      return readJson<TimedRoleAssignment[]>(storeStub.fetch("https://moderation-store/timed-roles"));
     },
     async listTimedRolesByGuild(guildId: string): Promise<TimedRoleAssignment[]> {
-      return readJson(
+      return readJson<TimedRoleAssignment[]>(
         storeStub.fetch(`https://moderation-store/timed-roles?guildId=${encodeURIComponent(guildId)}`)
       );
     },
@@ -102,8 +104,10 @@ export function createCloudflareStoreClient(storeStub: { fetch: (...args: any[])
         })
       );
     },
+    // Legacy RuntimeStore interface compatibility: readGatewaySnapshot lives here
+    // even though it calls the gateway stub, because RuntimeStore expects it
     async readGatewaySnapshot(): Promise<GatewaySnapshot> {
-      return readJson(storeStub.fetch("https://gateway-session/status"));
+      return readJson<GatewaySnapshot>(storeStub.fetch("https://gateway-session/status"));
     },
     async writeGatewaySnapshot(_snapshot: GatewaySnapshot): Promise<void> {
       // Cloudflare: Gateway session state persists in Durable Object storage
@@ -112,17 +116,19 @@ export function createCloudflareStoreClient(storeStub: { fetch: (...args: any[])
   };
 }
 
-async function readJson(responsePromise: Promise<unknown>): Promise<any> {
-  const response = await responsePromise as Response;
+async function validateResponse(responsePromise: Promise<Response>): Promise<Response> {
+  const response = await responsePromise;
   if (!response.ok) {
     throw new Error(`Cloudflare store request failed: ${response.status} ${await response.text()}`);
   }
+  return response;
+}
+
+async function readJson<T>(responsePromise: Promise<Response>): Promise<T> {
+  const response = await validateResponse(responsePromise);
   return response.json();
 }
 
-async function readJsonVoid(responsePromise: Promise<unknown>): Promise<void> {
-  const response = await responsePromise as Response;
-  if (!response.ok) {
-    throw new Error(`Cloudflare store request failed: ${response.status} ${await response.text()}`);
-  }
+async function readJsonVoid(responsePromise: Promise<Response>): Promise<void> {
+  await validateResponse(responsePromise);
 }

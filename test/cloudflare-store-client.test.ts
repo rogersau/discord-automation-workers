@@ -196,3 +196,39 @@ test("createCloudflareStoreClient.deleteTimedRole sends POST to /timed-role/remo
     },
   ]);
 });
+
+test("createCloudflareStoreClient throws descriptive error on non-ok response", async () => {
+  const storeClient = createCloudflareStoreClient({
+    fetch() {
+      return Promise.resolve(new Response("Internal Server Error", { status: 500 }) as any);
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      await storeClient.readConfig();
+    },
+    {
+      name: "Error",
+      message: /Cloudflare store request failed: 500 Internal Server Error/,
+    }
+  );
+});
+
+test("createCloudflareStoreClient error handling works for void methods", async () => {
+  const storeClient = createCloudflareStoreClient({
+    fetch() {
+      return Promise.resolve(new Response("Bad Request", { status: 400 }) as any);
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      await storeClient.upsertAppConfig({ key: "test", value: "value" });
+    },
+    {
+      name: "Error",
+      message: /Cloudflare store request failed: 400 Bad Request/,
+    }
+  );
+});
