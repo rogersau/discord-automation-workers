@@ -5,6 +5,7 @@ export interface Env {
   DISCORD_APPLICATION_ID?: string;
   ADMIN_AUTH_SECRET?: string;
   ADMIN_UI_PASSWORD?: string;
+  ADMIN_SESSION_SECRET?: string;
   GATEWAY_SESSION_DO: DurableObjectNamespace;
   MODERATION_STORE_DO: DurableObjectNamespace;
 }
