@@ -299,7 +299,7 @@ test("createRuntimeApp respects enabled: false for /blocklist list", async () =>
   });
 });
 
-test("createRuntimeApp handles /admin/gateway/status via GET", async () => {
+test("createRuntimeApp returns 404 for legacy /admin/gateway/status endpoint", async () => {
   const calls: string[] = [];
   const app = createRuntimeApp({
     discordPublicKey: "a".repeat(64),
@@ -330,16 +330,8 @@ test("createRuntimeApp handles /admin/gateway/status via GET", async () => {
     })
   );
 
-  assert.deepEqual(await response.json(), {
-    status: "idle",
-    sessionId: null,
-    resumeGatewayUrl: null,
-    lastSequence: null,
-    backoffAttempt: 0,
-    lastError: null,
-    heartbeatIntervalMs: null,
-  });
-  assert.deepEqual(calls, ["status"]);
+  assert.equal(response.status, 404);
+  assert.deepEqual(calls, []);
 });
 
 test("createRuntimeApp returns dashboard data and blocklist mutations through session-protected admin APIs", async () => {

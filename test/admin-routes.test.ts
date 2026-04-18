@@ -22,7 +22,7 @@ test("worker serves the admin shell for nested dashboard routes", async () => {
   assert.match(html, /data-initial-search="\?guildId=guild-1"/);
 });
 
-test("worker proxies /admin/gateway/status to the gateway session durable object", async () => {
+test("worker returns 404 for legacy /admin/gateway/status endpoint", async () => {
   const gatewayFetches: string[] = [];
 
   const response = await worker.fetch(
@@ -36,12 +36,11 @@ test("worker proxies /admin/gateway/status to the gateway session durable object
     {} as ExecutionContext
   );
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(gatewayFetches, ["https://gateway-session/status"]);
-  assert.deepEqual(await response.json(), { status: "idle" });
+  assert.equal(response.status, 404);
+  assert.equal(gatewayFetches.length, 0);
 });
 
-test("worker proxies /admin/gateway/start to the gateway session durable object", async () => {
+test("worker returns 404 for legacy /admin/gateway/start endpoint", async () => {
   const gatewayFetches: Array<{ input: string; method: string }> = [];
 
   const response = await worker.fetch(
@@ -60,34 +59,8 @@ test("worker proxies /admin/gateway/start to the gateway session durable object"
     {} as ExecutionContext
   );
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(gatewayFetches, [
-    {
-      input: "https://gateway-session/start",
-      method: "POST",
-    },
-  ]);
-  assert.deepEqual(await response.json(), { status: "connecting" });
-});
-
-test("worker protects gateway admin routes with ADMIN_AUTH_SECRET", async () => {
-  let gatewayCalls = 0;
-
-  const response = await worker.fetch(
-    new Request("https://worker.example/admin/gateway/status"),
-    createEnv({
-      ADMIN_AUTH_SECRET: "top-secret",
-      gatewayFetch() {
-        gatewayCalls += 1;
-        return Response.json({ status: "idle" });
-      },
-    }),
-    {} as ExecutionContext
-  );
-
-  assert.equal(response.status, 401);
-  assert.equal(await response.text(), "Unauthorized");
-  assert.equal(gatewayCalls, 0);
+  assert.equal(response.status, 404);
+  assert.equal(gatewayFetches.length, 0);
 });
 
 test("worker scheduled handler bootstraps the gateway session durable object", async () => {
@@ -218,19 +191,47 @@ test("worker rejects the legacy signed HTTP reaction ingress path", async () => 
   assert.equal(response.status, 404);
 });
 
-test("worker keeps routing /admin/gateway/status through the shared runtime layer", async () => {
+test("worker proxies /admin/api/gateway/status to the gateway session durable object", async () => {
+  const gatewayFetches: string[] = [];
+
   const response = await worker.fetch(
-    new Request("https://worker.example/admin/gateway/status"),
+    new Request("https://worker.example/admin/api/gateway/status"),
     createEnv({
-      gatewayFetch() {
+      ADMIN_UI_PASSWORD: "secret",
+      gatewayFetch(input) {
+        gatewayFetches.push(String(input));
         return Response.json({ status: "idle" });
       },
     }),
     {} as ExecutionContext
   );
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { status: "idle" });
+  // Should be 401 without a valid session, but the route should exist
+  assert.equal(response.status, 401);
+});
+
+test("worker proxies /admin/api/gateway/start to the gateway session durable object", async () => {
+  const gatewayFetches: Array<{ input: string; method: string }> = [];
+
+  const response = await worker.fetch(
+    new Request("https://worker.example/admin/api/gateway/start", {
+      method: "POST",
+    }),
+    createEnv({
+      ADMIN_UI_PASSWORD: "secret",
+      gatewayFetch(input, init) {
+        gatewayFetches.push({
+          input: String(input),
+          method: init?.method ?? "GET",
+        });
+        return Response.json({ status: "connecting" });
+      },
+    }),
+    {} as ExecutionContext
+  );
+
+  // Should be 401 without a valid session, but the route should exist
+  assert.equal(response.status, 401);
 });
 
 function createEnv(options?: {

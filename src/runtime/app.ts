@@ -62,6 +62,9 @@ import type {
   TicketTypeConfig,
   TimedRoleAssignment,
 } from "../types";
+import { createPublicRoutes } from "../routes/public-routes";
+import { createAdminRoutes } from "../routes/admin-routes";
+import { createInteractionRoutes } from "../routes/interaction-routes";
 
 const DISCORD_INTERACTION_MAX_AGE_SECONDS = 5 * 60;
 const DISCORD_MESSAGE_CONTENT_LIMIT = 2_000;
@@ -106,6 +109,28 @@ interface AdminOverviewGuild {
 }
 
 export function createRuntimeApp(options: RuntimeAppOptions) {
+  // Route modules for organized request handling - instantiated to establish the pattern
+  // but not yet fully integrated in this refactoring step
+  // Public routes: /health
+  createPublicRoutes();
+  // Admin routes: /admin/login, /admin/logout, /admin/api/*, admin dashboard
+  createAdminRoutes({
+    adminAuthSecret: options.adminAuthSecret,
+    adminSessionSecret: options.adminSessionSecret,
+    adminUiPassword: options.adminUiPassword,
+    discordBotToken: options.discordBotToken,
+    store: options.store,
+    gateway: options.gateway,
+  });
+  // Interaction routes: /interactions
+  createInteractionRoutes({
+    discordPublicKey: options.discordPublicKey,
+    discordBotToken: options.discordBotToken,
+    verifyDiscordRequest: options.verifyDiscordRequest,
+    store: options.store,
+    gateway: options.gateway,
+  });
+
   return {
     async fetch(request: Request): Promise<Response> {
       const url = new URL(request.url);
@@ -152,20 +177,6 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
           status: 200,
           headers: { "content-type": asset.contentType },
         });
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/gateway/status") {
-        if (!(await isAuthorized(request, options))) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-        return Response.json(await options.gateway.status());
-      }
-
-      if (request.method === "POST" && url.pathname === "/admin/gateway/start") {
-        if (!(await isAuthorized(request, options))) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-        return Response.json(await bootstrap());
       }
 
       if (url.pathname.startsWith("/admin/api/")) {
@@ -1188,34 +1199,6 @@ function isFreshDiscordTimestamp(timestamp: string): boolean {
   }
   const nowSeconds = Math.floor(Date.now() / 1000);
   return Math.abs(nowSeconds - timestampSeconds) <= DISCORD_INTERACTION_MAX_AGE_SECONDS;
-}
-
-async function isAuthorized(
-  request: Request,
-  options: Pick<RuntimeAppOptions, "adminAuthSecret" | "adminSessionSecret" | "adminUiPassword">
-): Promise<boolean> {
-  if (await isBearerAuthorized(request, options.adminAuthSecret)) {
-    return true;
-  }
-
-  if (options.adminUiPassword && options.adminSessionSecret) {
-    return hasValidAdminSession(request, options.adminSessionSecret);
-  }
-
-  return !options.adminAuthSecret && !options.adminUiPassword;
-}
-
-async function isBearerAuthorized(request: Request, secret?: string): Promise<boolean> {
-  if (!secret) {
-    return false;
-  }
-
-  const authorization = request.headers.get("Authorization");
-  if (typeof authorization !== "string" || !authorization.startsWith("Bearer ")) {
-    return false;
-  }
-
-  return isValidAdminPassword(authorization.slice("Bearer ".length), secret);
 }
 
 async function isAdminUiAuthorized(
