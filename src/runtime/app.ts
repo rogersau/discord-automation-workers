@@ -760,6 +760,23 @@ async function handleMessageComponentInteraction(
       return Response.json(buildEphemeralMessage("That ticket option is no longer available."));
     }
 
+    const openerUserId = getInteractionUserId(interaction);
+    if (!openerUserId) {
+      return Response.json(buildEphemeralMessage("Could not determine which user opened this ticket."));
+    }
+
+    if (ticketType.questions.length === 0) {
+      return createTicketFromInteraction({
+        guildId: interaction.guild_id,
+        openerUserId,
+        panel,
+        ticketType,
+        answers: [],
+        store,
+        discordBotToken,
+      });
+    }
+
     return Response.json(buildTicketModalResponse(ticketType));
   }
 
@@ -791,20 +808,50 @@ async function handleTicketModalSubmitInteraction(
     return Response.json(buildEphemeralMessage("That ticket option is no longer available."));
   }
 
-  const [config, panel] = await Promise.all([
-    store.readConfig(),
-    store.readTicketPanelConfig(interaction.guild_id),
-  ]);
+  const panel = await store.readTicketPanelConfig(interaction.guild_id);
   const ticketType = panel?.ticketTypes.find((entry) => entry.id === parsedCustomId.ticketTypeId);
   if (!panel || !ticketType) {
     return Response.json(buildEphemeralMessage("That ticket option is no longer available."));
   }
 
+  return createTicketFromInteraction({
+    guildId: interaction.guild_id,
+    openerUserId,
+    panel,
+    ticketType,
+    answers: extractTicketAnswersFromModal(
+      interaction as Parameters<typeof extractTicketAnswersFromModal>[0],
+      ticketType.questions
+    ),
+    store,
+    discordBotToken,
+  });
+}
+
+async function createTicketFromInteraction({
+  guildId,
+  openerUserId,
+  panel,
+  ticketType,
+  answers,
+  store,
+  discordBotToken,
+}: {
+  guildId: string;
+  openerUserId: string;
+  panel: TicketPanelConfig;
+  ticketType: TicketTypeConfig;
+  answers: TicketInstance["answers"];
+  store: RuntimeStore;
+  discordBotToken: string;
+}): Promise<Response> {
+  const config = await store.readConfig();
+
   let channel: Awaited<ReturnType<typeof createTicketChannel>>;
   try {
     channel = await createTicketChannel(
       {
-        guildId: interaction.guild_id,
+        guildId,
         name: buildTicketChannelName(ticketType.channelNamePrefix, openerUserId),
         parentId: panel.categoryChannelId,
         botUserId: config.botUserId,
@@ -819,14 +866,14 @@ async function handleTicketModalSubmitInteraction(
   }
 
   const instance: TicketInstance = {
-    guildId: interaction.guild_id,
+    guildId,
     channelId: channel.id,
     ticketTypeId: ticketType.id,
     ticketTypeLabel: ticketType.label,
     openerUserId,
     supportRoleId: ticketType.supportRoleId,
     status: "open",
-    answers: extractTicketAnswersFromModal(interaction as Parameters<typeof extractTicketAnswersFromModal>[0], ticketType.questions),
+    answers,
     openedAtMs: Date.now(),
     closedAtMs: null,
     closedByUserId: null,
@@ -847,7 +894,7 @@ async function handleTicketModalSubmitInteraction(
     if (persisted) {
       try {
         await store.deleteTicketInstance({
-          guildId: interaction.guild_id,
+          guildId,
           channelId: channel.id,
         });
       } catch (rollbackError) {
