@@ -129,7 +129,7 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
         if (!(await isAdminUiAuthorized(request, options))) {
           return redirect(getAdminLoginLocation(url.pathname));
         }
-        return renderAdminShell(true, normalizeAdminDashboardPath(url.pathname));
+        return renderAdminShell(true, normalizeAdminDashboardPath(url.pathname), url.search);
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/admin/assets/")) {
@@ -477,10 +477,11 @@ export function escapeHtmlAttribute(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function renderAdminShell(authenticated = false, initialPath = "/admin"): Response {
+function renderAdminShell(authenticated = false, initialPath = "/admin", initialSearch = ""): Response {
   const attributes = [
     authenticated ? 'data-authenticated="true"' : "",
     `data-initial-path="${escapeHtmlAttribute(initialPath)}"`,
+    `data-initial-search="${escapeHtmlAttribute(initialSearch)}"`,
   ]
     .filter(Boolean)
     .join(" ");

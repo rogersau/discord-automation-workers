@@ -1,9 +1,7 @@
 import { useState } from "react";
 
-import type { AdminGuildDirectoryEntry } from "../../runtime/admin-types";
 import { AdminPageHeader } from "./admin-page-header";
 import { EditorActions, EditorPanel, FormField } from "./admin-form-layout";
-import { GuildPicker } from "./guild-picker";
 import { PermissionNotice } from "./permission-notice";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -11,18 +9,15 @@ import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
 
 export function AdminBlocklistPage({
-  guildDirectory,
-  guildLookupError,
+  selectedGuildId,
 }: {
-  guildDirectory: AdminGuildDirectoryEntry[] | null;
-  guildLookupError: string | null;
+  selectedGuildId: string;
 }) {
-  const [guildId, setGuildId] = useState("");
   const [emoji, setEmoji] = useState("");
   const [action, setAction] = useState<"add" | "remove">("add");
   const [currentEmojis, setCurrentEmojis] = useState<string[] | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const trimmedGuildId = guildId.trim();
+  const trimmedGuildId = selectedGuildId.trim();
 
   async function loadBlocklist(id: string) {
     const normalizedGuildId = id.trim();
@@ -46,13 +41,13 @@ export function AdminBlocklistPage({
     const res = await fetch("/admin/api/blocklist", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ guildId, emoji, action }),
+      body: JSON.stringify({ guildId: selectedGuildId, emoji, action }),
     });
 
     if (res.ok) {
       const data = await res.json() as { guilds: Record<string, { emojis: string[] }> };
-      setCurrentEmojis(data.guilds?.[guildId]?.emojis ?? null);
-      setResult(`${action === "add" ? "Blocked" : "Unblocked"} ${emoji} in ${guildId}`);
+      setCurrentEmojis(data.guilds?.[selectedGuildId]?.emojis ?? null);
+      setResult(`${action === "add" ? "Blocked" : "Unblocked"} ${emoji} in ${selectedGuildId}`);
     }
   }
 
@@ -69,18 +64,13 @@ export function AdminBlocklistPage({
             description="Blocked emoji cleanup can fail if the bot cannot remove reactions in the affected channels."
             checks={["Manage Messages"]}
           />
+          {!trimmedGuildId ? (
+            <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+              Select a server from the sidebar to load or update its blocklist.
+            </div>
+          ) : null}
           <EditorPanel>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1.05fr)_minmax(14rem,0.95fr)]">
-              <GuildPicker
-                id="bl-guild"
-                value={guildId}
-                guildDirectory={guildDirectory}
-                loadError={guildLookupError}
-                onChange={(nextGuildId) => {
-                  setGuildId(nextGuildId);
-                  setCurrentEmojis(null);
-                }}
-              />
               <FormField label="Emoji" htmlFor="bl-emoji">
                 <Input id="bl-emoji" value={emoji} onChange={(e) => setEmoji(e.target.value)} />
               </FormField>
@@ -109,11 +99,16 @@ export function AdminBlocklistPage({
                 className="w-full sm:w-auto sm:min-w-[11rem]"
                 variant="outline"
                 disabled={!trimmedGuildId}
-                onClick={() => void loadBlocklist(guildId)}
+                onClick={() => void loadBlocklist(selectedGuildId)}
               >
                 Load blocklist
               </Button>
-              <Button size="sm" className="w-full sm:w-auto sm:min-w-[10rem]" onClick={() => void handleSubmit()}>
+              <Button
+                size="sm"
+                className="w-full sm:w-auto sm:min-w-[10rem]"
+                disabled={!trimmedGuildId}
+                onClick={() => void handleSubmit()}
+              >
                 Apply
               </Button>
             </EditorActions>

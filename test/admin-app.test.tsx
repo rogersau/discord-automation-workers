@@ -64,6 +64,7 @@ test("authenticated admin dashboard keeps guild load controls in a plain shadcn 
 
   assert.match(html, /Discord Automation/);
   assert.match(html, /Admin Dashboard/);
+  assert.match(html, /aria-label="Open navigation menu"/);
   assert.match(html, /mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6/);
   assert.match(html, /rounded-lg border bg-card text-card-foreground shadow-sm/);
   assert.match(html, /method="post" action="\/admin\/logout"/);
@@ -115,10 +116,11 @@ test("authenticated admin dashboard renders the blocklist workspace on /admin/bl
   );
 
   assert.match(html, /aria-current="page"[^>]*>Blocklist</);
+  assert.match(html, /id="sidebar-guild-query"/);
   assert.match(html, /Load blocklist/i);
   assert.match(html, /Apply/i);
-  assert.match(html, /Filter servers/i);
   assert.match(html, /Manage Messages/i);
+  assert.doesNotMatch(html, /id="bl-guild-query"/);
   assert.doesNotMatch(html, /Add timed role/i);
   assert.doesNotMatch(html, /Load ticket panel/i);
 });
@@ -129,11 +131,13 @@ test("authenticated admin dashboard renders the timed roles workspace on /admin/
   );
 
   assert.match(html, /aria-current="page"[^>]*>Timed Roles</);
+  assert.match(html, /id="sidebar-guild-query"/);
   assert.match(html, /Load timed roles/i);
   assert.match(html, /Add timed role/i);
   assert.match(html, /Duration/i);
   assert.match(html, /Manage Roles/i);
   assert.match(html, /highest role/i);
+  assert.doesNotMatch(html, /id="tr-guild-query"/);
   assert.doesNotMatch(html, /Load blocklist/i);
   assert.doesNotMatch(html, /Load ticket panel/i);
 });
@@ -142,10 +146,12 @@ test("authenticated admin dashboard renders the tickets workspace on /admin/tick
   const html = renderToString(<App initialAuthenticated initialPath="/admin/tickets" />);
 
   assert.match(html, /aria-current="page"[^>]*>Tickets</);
+  assert.match(html, /id="sidebar-guild-query"/);
   assert.match(html, /Load ticket panel/i);
   assert.match(html, /Ticket Panels|Tickets/i);
   assert.match(html, /channel access/i);
   assert.match(html, /support roles/i);
+  assert.doesNotMatch(html, /id="tp-guild-query"/);
   assert.doesNotMatch(html, /Load blocklist/i);
   assert.doesNotMatch(html, /Add timed role/i);
 });
@@ -206,7 +212,7 @@ test("getDashboardPageDataPolicy scopes loads to the active page", () => {
   });
   assert.deepEqual(getDashboardPageDataPolicy("/admin/gateway"), {
     loadOverview: false,
-    loadGuildDirectory: false,
+    loadGuildDirectory: true,
     monitorGateway: true,
     refreshOverviewAfterGatewayStart: false,
   });
@@ -228,6 +234,27 @@ test("getDashboardPageDataPolicy scopes loads to the active page", () => {
     monitorGateway: false,
     refreshOverviewAfterGatewayStart: false,
   });
+});
+
+test("getSelectedGuildIdFromSearch reads the sidebar guild from the URL query", () => {
+  const helper = (AdminAppModule as Record<string, unknown>).getSelectedGuildIdFromSearch;
+
+  assert.equal(typeof helper, "function");
+  const getSelectedGuildIdFromSearch = helper as (search: string) => string;
+
+  assert.equal(getSelectedGuildIdFromSearch("?guildId=guild-2"), "guild-2");
+  assert.equal(getSelectedGuildIdFromSearch("?guildId="), "");
+  assert.equal(getSelectedGuildIdFromSearch(""), "");
+});
+
+test("buildAdminDashboardHref keeps the selected guild in sidebar navigation links", () => {
+  const helper = (AdminAppModule as Record<string, unknown>).buildAdminDashboardHref;
+
+  assert.equal(typeof helper, "function");
+  const buildAdminDashboardHref = helper as (path: string, guildId: string) => string;
+
+  assert.equal(buildAdminDashboardHref("/admin/tickets", "guild-2"), "/admin/tickets?guildId=guild-2");
+  assert.equal(buildAdminDashboardHref("/admin/tickets", ""), "/admin/tickets");
 });
 
 test("combineDashboardErrors preserves both overview and gateway failures", () => {

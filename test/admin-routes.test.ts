@@ -10,7 +10,7 @@ import worker from "../src/index";
 
 test("worker serves the admin shell for nested dashboard routes", async () => {
   const response = await worker.fetch(
-    new Request("https://worker.example/admin/blocklist"),
+    new Request("https://worker.example/admin/blocklist?guildId=guild-1"),
     createEnv(),
     {} as ExecutionContext
   );
@@ -19,6 +19,7 @@ test("worker serves the admin shell for nested dashboard routes", async () => {
   const html = await response.text();
   assert.match(html, /data-authenticated="true"/);
   assert.match(html, /data-initial-path="\/admin\/blocklist"/);
+  assert.match(html, /data-initial-search="\?guildId=guild-1"/);
 });
 
 test("worker proxies /admin/gateway/status to the gateway session durable object", async () => {

@@ -8,9 +8,14 @@ if (!root) throw new Error("Missing #admin-root element");
 
 const initialAuthenticated = root.dataset.authenticated === "true";
 const initialPath = root.dataset.initialPath ?? "/admin";
+const initialSearch = root.dataset.initialSearch ?? "";
 
 createRoot(root).render(
   <StrictMode>
-    <App initialAuthenticated={initialAuthenticated} initialPath={initialPath} />
+    <App
+      initialAuthenticated={initialAuthenticated}
+      initialPath={initialPath}
+      initialSearch={initialSearch}
+    />
   </StrictMode>
 );

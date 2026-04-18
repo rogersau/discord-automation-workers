@@ -1,22 +1,18 @@
 import { useState } from "react";
 
 import type { TicketPanelConfig } from "../../types";
-import type { AdminGuildDirectoryEntry } from "../../runtime/admin-types";
 import { TicketPanelEditor, type GuildResources } from "./ticket-panel-editor";
 import { AdminPageHeader } from "./admin-page-header";
 import { EditorActions, EditorPanel } from "./admin-form-layout";
-import { GuildPicker } from "./guild-picker";
 import { PermissionNotice } from "./permission-notice";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 
 export function AdminTicketsPage({
-  guildDirectory,
-  guildLookupError,
+  selectedGuildId,
 }: {
-  guildDirectory: AdminGuildDirectoryEntry[] | null;
-  guildLookupError: string | null;
+  selectedGuildId: string;
 }) {
   return (
     <section className="space-y-6">
@@ -31,10 +27,7 @@ export function AdminTicketsPage({
             description="Ticket publishing and ticket channel setup can fail if the bot is missing channel access or cannot see the configured support roles."
             checks={["Channel access", "Support roles"]}
           />
-          <TicketPanelsEditor
-            guildDirectory={guildDirectory}
-            guildLookupError={guildLookupError}
-          />
+          <TicketPanelsEditor selectedGuildId={selectedGuildId} />
         </CardContent>
       </Card>
     </section>
@@ -42,18 +35,15 @@ export function AdminTicketsPage({
 }
 
 function TicketPanelsEditor({
-  guildDirectory,
-  guildLookupError,
+  selectedGuildId,
 }: {
-  guildDirectory: AdminGuildDirectoryEntry[] | null;
-  guildLookupError: string | null;
+  selectedGuildId: string;
 }) {
-  const [guildId, setGuildId] = useState("");
   const [guildResources, setGuildResources] = useState<GuildResources | null>(null);
   const [panelConfig, setPanelConfig] = useState<TicketPanelConfig | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const trimmedGuildId = guildId.trim();
+  const trimmedGuildId = selectedGuildId.trim();
 
   async function loadResources(id: string) {
     const normalized = id.trim();
@@ -134,25 +124,19 @@ function TicketPanelsEditor({
 
   return (
     <div className="space-y-4">
+      {!trimmedGuildId ? (
+        <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+          Select a server from the sidebar to load its ticket panel workspace.
+        </div>
+      ) : null}
       <EditorPanel>
-        <GuildPicker
-          id="tp-guild"
-          value={guildId}
-          guildDirectory={guildDirectory}
-          loadError={guildLookupError}
-          onChange={(nextGuildId) => {
-            setGuildId(nextGuildId);
-            setGuildResources(null);
-            setPanelConfig(null);
-          }}
-        />
         <EditorActions>
           <Button
             size="sm"
             variant="outline"
             className="w-full sm:w-auto sm:min-w-[14rem]"
             disabled={!trimmedGuildId || loading}
-            onClick={() => void loadResources(guildId)}
+            onClick={() => void loadResources(selectedGuildId)}
           >
             {loading ? "Loading…" : "Load ticket panel"}
           </Button>

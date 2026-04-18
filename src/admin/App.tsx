@@ -40,15 +40,20 @@ interface AdminOverview {
 interface Props {
   initialAuthenticated?: boolean;
   initialPath?: string;
+  initialSearch?: string;
 }
 
 export default function App({
   initialAuthenticated = false,
   initialPath = "/admin",
+  initialSearch = "",
 }: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
   const currentPath = normalizeAdminDashboardPath(initialPath);
   const pageDataPolicy = getDashboardPageDataPolicy(currentPath);
+  const [selectedGuildId, setSelectedGuildId] = useState(() =>
+    getSelectedGuildIdFromSearch(initialSearch)
+  );
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
@@ -206,13 +211,33 @@ export default function App({
     ]);
   }
 
+  const handleSelectedGuildChange = useCallback((nextGuildId: string) => {
+    const normalizedGuildId = nextGuildId.trim();
+    setSelectedGuildId(normalizedGuildId);
+
+    if (typeof window !== "undefined") {
+      window.history.replaceState(
+        null,
+        "",
+        buildAdminDashboardHref(window.location.pathname, normalizedGuildId)
+      );
+    }
+  }, []);
+
   if (authenticated) {
     const guildNamesById = new Map(
       (guildDirectory ?? []).map((guild) => [guild.guildId, guild.name] as const)
     );
 
     return (
-      <AdminShell currentPath={currentPath}>
+      <AdminShell
+        currentPath={currentPath}
+        guildDirectory={guildDirectory}
+        guildLookupError={guildLookupError}
+        selectedGuildId={selectedGuildId}
+        onSelectedGuildChange={handleSelectedGuildChange}
+        buildNavigationHref={(path) => buildAdminDashboardHref(path, selectedGuildId)}
+      >
         {currentPath === "/admin" ? (
           <AdminOverviewPage
             gatewayStatus={gatewayError ? null : gatewayStatus}
@@ -234,20 +259,20 @@ export default function App({
         ) : null}
         {currentPath === "/admin/blocklist" ? (
           <AdminBlocklistPage
-            guildDirectory={guildDirectory}
-            guildLookupError={guildLookupError}
+            key={selectedGuildId || "no-guild"}
+            selectedGuildId={selectedGuildId}
           />
         ) : null}
         {currentPath === "/admin/timed-roles" ? (
           <AdminTimedRolesPage
-            guildDirectory={guildDirectory}
-            guildLookupError={guildLookupError}
+            key={selectedGuildId || "no-guild"}
+            selectedGuildId={selectedGuildId}
           />
         ) : null}
         {currentPath === "/admin/tickets" ? (
           <AdminTicketsPage
-            guildDirectory={guildDirectory}
-            guildLookupError={guildLookupError}
+            key={selectedGuildId || "no-guild"}
+            selectedGuildId={selectedGuildId}
           />
         ) : null}
       </AdminShell>
@@ -327,7 +352,7 @@ export function getDashboardPageDataPolicy(path: string) {
   if (currentPath === "/admin/gateway") {
     return {
       loadOverview: false,
-      loadGuildDirectory: false,
+      loadGuildDirectory: true,
       monitorGateway: true,
       refreshOverviewAfterGatewayStart: false,
     };
@@ -459,4 +484,19 @@ function formatHeartbeatInterval(intervalMs: number | null): string {
   }
 
   return `${Math.round(intervalMs / 1000)}s`;
+}
+
+export function getSelectedGuildIdFromSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  return params.get("guildId")?.trim() ?? "";
+}
+
+export function buildAdminDashboardHref(path: string, guildId: string): string {
+  const normalizedGuildId = guildId.trim();
+  if (!normalizedGuildId) {
+    return path;
+  }
+
+  const params = new URLSearchParams({ guildId: normalizedGuildId });
+  return `${path}?${params.toString()}`;
 }

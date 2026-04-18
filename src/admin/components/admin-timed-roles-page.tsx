@@ -1,9 +1,7 @@
 import { useState } from "react";
 
-import type { AdminGuildDirectoryEntry } from "../../runtime/admin-types";
 import { AdminPageHeader } from "./admin-page-header";
 import { EditorActions, EditorPanel, FormField } from "./admin-form-layout";
-import { GuildPicker } from "./guild-picker";
 import { PermissionNotice } from "./permission-notice";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -27,11 +25,9 @@ interface TimedRoleAssignment {
 }
 
 export function AdminTimedRolesPage({
-  guildDirectory,
-  guildLookupError,
+  selectedGuildId,
 }: {
-  guildDirectory: AdminGuildDirectoryEntry[] | null;
-  guildLookupError: string | null;
+  selectedGuildId: string;
 }) {
   return (
     <section className="space-y-6">
@@ -46,10 +42,7 @@ export function AdminTimedRolesPage({
             description="Timed role changes can fail if the bot cannot manage roles or if its highest role is below the target role."
             checks={["Manage Roles", "Highest role above target"]}
           />
-          <TimedRolesEditor
-            guildDirectory={guildDirectory}
-            guildLookupError={guildLookupError}
-          />
+          <TimedRolesEditor selectedGuildId={selectedGuildId} />
         </CardContent>
       </Card>
     </section>
@@ -57,20 +50,17 @@ export function AdminTimedRolesPage({
 }
 
 function TimedRolesEditor({
-  guildDirectory,
-  guildLookupError,
+  selectedGuildId,
 }: {
-  guildDirectory: AdminGuildDirectoryEntry[] | null;
-  guildLookupError: string | null;
+  selectedGuildId: string;
 }) {
-  const [guildId, setGuildId] = useState("");
   const [userId, setUserId] = useState("");
   const [roleId, setRoleId] = useState("");
   const [duration, setDuration] = useState("1h");
   const [assignments, setAssignments] = useState<TimedRoleAssignment[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const trimmedGuildId = guildId.trim();
+  const trimmedGuildId = selectedGuildId.trim();
 
   async function loadAssignments(nextGuildId: string) {
     const nextTrimmedGuildId = nextGuildId.trim();
@@ -103,7 +93,7 @@ function TimedRolesEditor({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         action: "add",
-        guildId,
+        guildId: selectedGuildId,
         userId,
         roleId,
         duration,
@@ -153,18 +143,11 @@ function TimedRolesEditor({
 
   return (
     <div className="space-y-4">
+      {!trimmedGuildId ? (
+        <EmptyState message="Select a server from the sidebar to manage timed roles." />
+      ) : null}
       <EditorPanel>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(8rem,0.8fr)]">
-          <GuildPicker
-            id="tr-guild"
-            value={guildId}
-            guildDirectory={guildDirectory}
-            loadError={guildLookupError}
-            onChange={(nextGuildId) => {
-              setGuildId(nextGuildId);
-              setAssignments(null);
-            }}
-          />
           <FormField label="User ID" htmlFor="tr-user">
             <Input id="tr-user" value={userId} onChange={(event) => setUserId(event.target.value)} />
           </FormField>
@@ -185,11 +168,16 @@ function TimedRolesEditor({
             className="w-full sm:w-auto sm:min-w-[12rem]"
             variant="outline"
             disabled={!trimmedGuildId}
-            onClick={() => void loadAssignments(guildId)}
+            onClick={() => void loadAssignments(selectedGuildId)}
           >
             Load timed roles
           </Button>
-          <Button size="sm" className="w-full sm:w-auto sm:min-w-[12rem]" onClick={() => void handleAdd()}>
+          <Button
+            size="sm"
+            className="w-full sm:w-auto sm:min-w-[12rem]"
+            disabled={!trimmedGuildId}
+            onClick={() => void handleAdd()}
+          >
             Add timed role
           </Button>
         </EditorActions>
