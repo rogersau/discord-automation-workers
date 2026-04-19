@@ -89,7 +89,7 @@ wrangler secret put ADMIN_UI_PASSWORD
 # Required: dedicated secret for signing admin session cookies.
 wrangler secret put ADMIN_SESSION_SECRET
 
-# Optional: require bearer auth for legacy admin routes.
+# Optional: legacy admin bearer-auth secret; not used for dashboard session cookies.
 wrangler secret put ADMIN_AUTH_SECRET
 ```
 
