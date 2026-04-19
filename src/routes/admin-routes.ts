@@ -8,7 +8,7 @@ import {
   isAdminDashboardPath,
   normalizeAdminDashboardPath,
 } from "../admin/dashboard-routes";
-import { parseTimedRoleDuration } from "../timed-roles";
+import { parseTimedRoleDuration, describeTimedRoleAssignmentFailure, describeTimedRoleRemovalFailure } from "../timed-roles";
 import { normalizeEmoji } from "../blocklist";
 import type { GatewayService } from "../services/gateway-service";
 import type { AdminOverviewService } from "../services/admin-overview-service";
@@ -185,61 +185,77 @@ export function createAdminRoutes(options: AdminRouteOptions): RouteHandler {
       }
 
       if (request.method === "POST" && url.pathname === "/admin/api/timed-roles") {
+        let parsedBody: {
+          guildId: string;
+          userId: string;
+          roleId: string;
+          action: "add" | "remove";
+          duration?: string;
+        };
+
         try {
-          const body = await request.json() as {
-            guildId: string;
-            userId: string;
-            roleId: string;
-            action: "add" | "remove";
-            duration?: string;
-          };
-
-          if (!body.guildId || !body.userId || !body.roleId || !body.action) {
-            return Response.json({ error: "Missing guildId, userId, roleId, or action" }, { status: 400 });
-          }
-
-          if (body.action !== "add" && body.action !== "remove") {
-            return Response.json({ error: "Invalid action. Use 'add' or 'remove'" }, { status: 400 });
-          }
-
-          if (body.action === "add") {
-            if (!body.duration) {
-              return Response.json({ error: "Missing duration for timed role add" }, { status: 400 });
-            }
-            
-            const parsedDuration = parseTimedRoleDuration(body.duration, Date.now());
-            if (!parsedDuration) {
-              return Response.json(
-                { error: "Invalid duration. Use values like 1h, 1w, or 1m." },
-                { status: 400 }
-              );
-            }
-
-            await options.services.timedRoleService.assignTimedRole({
-              guildId: body.guildId,
-              userId: body.userId,
-              roleId: body.roleId,
-              durationInput: parsedDuration.durationInput,
-              expiresAtMs: parsedDuration.expiresAtMs,
-            });
-          } else {
-            await options.services.timedRoleService.removeTimedRole({
-              guildId: body.guildId,
-              userId: body.userId,
-              roleId: body.roleId,
-            });
-          }
-
-          return Response.json({
-            guildId: body.guildId,
-            assignments: await options.services.timedRoleService.listTimedRoles(body.guildId),
-          });
+          parsedBody = await request.json();
         } catch (error) {
           if (error instanceof SyntaxError) {
             return Response.json({ error: "Invalid JSON body" }, { status: 400 });
           }
           throw error;
         }
+
+        if (!parsedBody.guildId || !parsedBody.userId || !parsedBody.roleId || !parsedBody.action) {
+          return Response.json({ error: "Missing guildId, userId, roleId, or action" }, { status: 400 });
+        }
+
+        if (parsedBody.action !== "add" && parsedBody.action !== "remove") {
+          return Response.json({ error: "Invalid action. Use 'add' or 'remove'" }, { status: 400 });
+        }
+
+        if (parsedBody.action === "add") {
+          if (!parsedBody.duration) {
+            return Response.json({ error: "Missing duration for timed role add" }, { status: 400 });
+          }
+          
+          const parsedDuration = parseTimedRoleDuration(parsedBody.duration, Date.now());
+          if (!parsedDuration) {
+            return Response.json(
+              { error: "Invalid duration. Use values like 1h, 1w, or 1m." },
+              { status: 400 }
+            );
+          }
+
+          try {
+            await options.services.timedRoleService.assignTimedRole({
+              guildId: parsedBody.guildId,
+              userId: parsedBody.userId,
+              roleId: parsedBody.roleId,
+              durationInput: parsedDuration.durationInput,
+              expiresAtMs: parsedDuration.expiresAtMs,
+            });
+          } catch (error) {
+            return Response.json(
+              { error: describeTimedRoleAssignmentFailure(error) },
+              { status: 502 }
+            );
+          }
+        } else {
+          try {
+            await options.services.timedRoleService.removeTimedRole({
+              guildId: parsedBody.guildId,
+              userId: parsedBody.userId,
+              roleId: parsedBody.roleId,
+            });
+          } catch (error) {
+            return Response.json(
+              { error: describeTimedRoleRemovalFailure(error) },
+              { status: 502 }
+            );
+          }
+        }
+
+        return Response.json({
+          guildId: parsedBody.guildId,
+          assignments: await options.services.timedRoleService.listTimedRoles(parsedBody.guildId),
+        });
       }
 
       return options.handleAdminApiRequest(request, url);

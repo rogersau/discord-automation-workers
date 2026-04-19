@@ -914,6 +914,112 @@ test("createRuntimeApp rejects malformed POST /admin/api/timed-roles bodies with
   }
 });
 
+test("createRuntimeApp returns 502 JSON when timed-role add fails at Discord", async () => {
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    calls.push("discord:fail");
+    return new Response(JSON.stringify({ message: "Missing Permissions", code: 50013 }), { status: 403 });
+  }) as typeof fetch;
+
+  try {
+    const app = createRuntimeApp({
+      discordPublicKey: "a".repeat(64),
+      discordBotToken: "bot-token",
+      adminUiPassword: "let-me-in",
+      adminSessionSecret: "session-secret",
+      verifyDiscordRequest: async () => true,
+      store: {
+        async upsertTimedRole() {
+          calls.push("store:add");
+        },
+        async deleteTimedRole() {
+          calls.push("store:rollback");
+        },
+        async listTimedRolesByGuild() {
+          return [];
+        },
+      } as unknown as RuntimeStore,
+      gateway: {} as GatewayController,
+    });
+
+    const cookie = await createAdminSessionCookie("session-secret");
+    const response = await app.fetch(
+      new Request("https://runtime.example/admin/api/timed-roles", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "add",
+          guildId: "guild-1",
+          userId: "user-1",
+          roleId: "role-1",
+          duration: "1h",
+        }),
+      })
+    );
+
+    assert.equal(response.status, 502);
+    const body = (await response.json()) as { error: string };
+    assert.ok(body.error, "Response should have error field");
+    assert.match(body.error, /Failed to assign the timed role/);
+    assert.match(body.error, /Manage Roles/);
+    assert.deepEqual(calls, ["store:add", "discord:fail", "store:rollback"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("createRuntimeApp returns 502 JSON when timed-role remove fails at Discord", async () => {
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    calls.push("discord:fail");
+    return new Response(JSON.stringify({ message: "Unknown Member", code: 10007 }), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const app = createRuntimeApp({
+      discordPublicKey: "a".repeat(64),
+      discordBotToken: "bot-token",
+      adminUiPassword: "let-me-in",
+      adminSessionSecret: "session-secret",
+      verifyDiscordRequest: async () => true,
+      store: {
+        async deleteTimedRole() {
+          calls.push("store:remove");
+        },
+        async listTimedRolesByGuild() {
+          return [];
+        },
+      } as unknown as RuntimeStore,
+      gateway: {} as GatewayController,
+    });
+
+    const cookie = await createAdminSessionCookie("session-secret");
+    const response = await app.fetch(
+      new Request("https://runtime.example/admin/api/timed-roles", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "remove",
+          guildId: "guild-1",
+          userId: "user-1",
+          roleId: "role-1",
+        }),
+      })
+    );
+
+    assert.equal(response.status, 502);
+    const body = (await response.json()) as { error: string };
+    assert.ok(body.error, "Response should have error field");
+    assert.match(body.error, /Failed to remove the timed role/);
+    assert.match(body.error, /not be found/);
+    assert.deepEqual(calls, ["discord:fail"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("createRuntimeApp rejects malformed POST /admin/api/config bodies with 400 JSON", async () => {
   const calls: string[] = [];
   const app = createRuntimeApp({

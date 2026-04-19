@@ -195,8 +195,8 @@ For timed roles, the role must already exist and be configured in Discord; the b
 | POST | `/interactions` | Discord interactions callback endpoint |
 | GET | `/admin/login` | Render the admin login page |
 | GET | `/admin` | Render the authenticated admin dashboard |
-| GET | `/admin/gateway/status` | Legacy runtime endpoint used by the dashboard for gateway state |
-| POST | `/admin/gateway/start` | Legacy runtime endpoint used by the dashboard to force bootstrap |
+| GET | `/admin/api/gateway/status` | Runtime endpoint used by the dashboard for gateway state |
+| POST | `/admin/api/gateway/start` | Runtime endpoint used by the dashboard to force bootstrap |
 | GET/POST | `/admin/api/*` | Session-protected dashboard APIs for gateway, guild blocklist, and timed-role operations |
 
 Set `ADMIN_UI_PASSWORD` and `ADMIN_SESSION_SECRET` to enable the supported browser-based operator workflow. The dashboard is the supported interface for gateway status/bootstrap, reviewing stored guild state, guild blocklist management, and timed-role management by guild ID. Admin session cookies are signed with `ADMIN_SESSION_SECRET` to ensure secure authentication.

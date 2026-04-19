@@ -1,3 +1,5 @@
+import { DiscordApiError } from "./discord";
+
 const HOUR_MS = 60 * 60 * 1000;
 const WEEK_MS = 7 * 24 * HOUR_MS;
 const DURATION_PATTERN = /^(\d+)([hwm])$/i;
@@ -51,4 +53,44 @@ export function parseTimedRoleDuration(
 
 export function formatTimedRoleExpiry(expiresAtMs: number): string {
   return `<t:${Math.floor(expiresAtMs / 1000)}:R>`;
+}
+
+export function describeTimedRoleAssignmentFailure(error: unknown): string {
+  if (!(error instanceof DiscordApiError)) {
+    return "Failed to assign the timed role.";
+  }
+
+  if (error.status === 403) {
+    return "Failed to assign the timed role. Ensure the bot has Manage Roles and that its highest role is above the target role.";
+  }
+
+  if (error.status === 404) {
+    return "Failed to assign the timed role. The member or role could not be found in this server.";
+  }
+
+  if (error.status >= 500) {
+    return "Failed to assign the timed role because Discord is currently unavailable.";
+  }
+
+  return `Failed to assign the timed role (${error.status}).`;
+}
+
+export function describeTimedRoleRemovalFailure(error: unknown): string {
+  if (!(error instanceof DiscordApiError)) {
+    return "Failed to remove the timed role.";
+  }
+
+  if (error.status === 403) {
+    return "Failed to remove the timed role. Ensure the bot has Manage Roles and that its highest role is above the target role.";
+  }
+
+  if (error.status === 404) {
+    return "Failed to remove the timed role. The member or role could not be found in this server.";
+  }
+
+  if (error.status >= 500) {
+    return "Failed to remove the timed role because Discord is currently unavailable.";
+  }
+
+  return `Failed to remove the timed role (${error.status}).`;
 }
