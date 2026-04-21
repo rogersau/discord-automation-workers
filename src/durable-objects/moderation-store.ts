@@ -71,6 +71,10 @@ export class ModerationStoreDO implements DurableObject {
         transcript_message_id TEXT,
         PRIMARY KEY (guild_id, channel_id)
       );
+      CREATE TABLE IF NOT EXISTS ticket_counters (
+        guild_id TEXT PRIMARY KEY,
+        next_ticket_number INTEGER NOT NULL
+      );
     `);
 
     this.sql.exec(
@@ -135,6 +139,15 @@ export class ModerationStoreDO implements DurableObject {
       try {
         const body = parseAppConfigMutation(await request.json());
         return Response.json(this.upsertAppConfig(body));
+      } catch (error) {
+        return this.errorResponse(error);
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/ticket-number/next") {
+      try {
+        const body = parseGuildIdRequest(await request.json());
+        return Response.json({ ticketNumber: this.reserveNextTicketNumber(body.guildId) });
       } catch (error) {
         return this.errorResponse(error);
       }
@@ -273,6 +286,32 @@ export class ModerationStoreDO implements DurableObject {
     );
 
     return { ok: true };
+  }
+
+  private reserveNextTicketNumber(guildId: string): number {
+    const row = [
+      ...this.sql.exec(
+        "SELECT next_ticket_number FROM ticket_counters WHERE guild_id = ?",
+        guildId
+      ),
+    ][0] as Record<string, unknown> | undefined;
+
+    if (!row) {
+      this.sql.exec(
+        "INSERT INTO ticket_counters(guild_id, next_ticket_number) VALUES(?, ?)",
+        guildId,
+        2
+      );
+      return 1;
+    }
+
+    const ticketNumber = row.next_ticket_number as number;
+    this.sql.exec(
+      "UPDATE ticket_counters SET next_ticket_number = ? WHERE guild_id = ?",
+      ticketNumber + 1,
+      guildId
+    );
+    return ticketNumber;
   }
 
   private readTicketPanelConfig(guildId: string): TicketPanelConfig | null {
@@ -636,6 +675,16 @@ function parseTicketDeleteRequest(body: unknown): { guildId: string; channelId: 
   return {
     guildId: asRequiredString(body.guildId, "guildId"),
     channelId: asRequiredString(body.channelId, "channelId"),
+  };
+}
+
+function parseGuildIdRequest(body: unknown): { guildId: string } {
+  if (!isRecord(body)) {
+    throw new ModerationStoreInputError("Invalid JSON body");
+  }
+
+  return {
+    guildId: asRequiredString(body.guildId, "guildId"),
   };
 }
 

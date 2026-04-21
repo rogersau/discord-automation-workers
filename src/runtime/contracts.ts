@@ -20,6 +20,7 @@ export interface RuntimeStore {
   readConfig(): Promise<BlocklistConfig>;
   upsertAppConfig(body: AppConfigMutation): Promise<void>;
   applyGuildEmojiMutation(body: { guildId: string; emoji: string; action: "add" | "remove" }): Promise<BlocklistConfig>;
+  reserveNextTicketNumber(guildId: string): Promise<number>;
   readTicketPanelConfig(guildId: string): Promise<TicketPanelConfig | null>;
   upsertTicketPanelConfig(panel: TicketPanelConfig): Promise<void>;
   createTicketInstance(instance: TicketInstance): Promise<void>;

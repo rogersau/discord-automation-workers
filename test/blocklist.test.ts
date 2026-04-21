@@ -665,6 +665,24 @@ test("ModerationStoreDO stores ticket panels and ticket instances through HTTP e
     )
   );
   assert.equal(await readClosed.json(), null);
+
+  const reserveTicketOne = await store.fetch(
+    new Request("https://moderation-store/ticket-number/next", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ guildId: "guild-1" }),
+    })
+  );
+  assert.deepEqual(await reserveTicketOne.json(), { ticketNumber: 1 });
+
+  const reserveTicketTwo = await store.fetch(
+    new Request("https://moderation-store/ticket-number/next", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ guildId: "guild-1" }),
+    })
+  );
+  assert.deepEqual(await reserveTicketTwo.json(), { ticketNumber: 2 });
 });
 
 test("ModerationStoreDO rejects invalid ticket payloads with 400", async () => {
@@ -937,6 +955,7 @@ function createFakeSql(options?: {
       transcript_message_id: string | null;
     }
   >();
+  const ticketCounters = new Map<string, number>();
 
   return {
     exec(query: string, ...params: unknown[]) {
@@ -1111,6 +1130,21 @@ function createFakeSql(options?: {
           panel_message_id,
           ticket_types_json,
         });
+        return [];
+      }
+
+      if (query === "SELECT next_ticket_number FROM ticket_counters WHERE guild_id = ?") {
+        const next_ticket_number = ticketCounters.get(params[0] as string);
+        return next_ticket_number === undefined ? [] : [{ next_ticket_number }];
+      }
+
+      if (query === "INSERT INTO ticket_counters(guild_id, next_ticket_number) VALUES(?, ?)") {
+        ticketCounters.set(params[0] as string, params[1] as number);
+        return [];
+      }
+
+      if (query === "UPDATE ticket_counters SET next_ticket_number = ? WHERE guild_id = ?") {
+        ticketCounters.set(params[1] as string, params[0] as number);
         return [];
       }
 

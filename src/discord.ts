@@ -41,6 +41,16 @@ export interface CreateChannelMessageInput {
   allowed_mentions?: DiscordAllowedMentions;
 }
 
+export interface DiscordEmbedField {
+  name: string;
+  value: string;
+  inline?: boolean;
+}
+
+export interface DiscordEmbedFooter {
+  text: string;
+}
+
 export interface DiscordChannelResource {
   id: string;
   name: string;
@@ -82,6 +92,9 @@ export interface DiscordEmbed {
   title?: string;
   description?: string;
   color?: number;
+  fields?: DiscordEmbedField[];
+  footer?: DiscordEmbedFooter;
+  timestamp?: string;
 }
 
 export interface DiscordMessageResource {

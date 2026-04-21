@@ -39,6 +39,7 @@ import {
   buildTicketModalResponse,
   buildTicketOpenCustomId,
   extractTicketAnswersFromModal,
+  formatTicketNumber,
   parseTicketCustomId,
   renderTicketTranscript,
 } from "../tickets";
@@ -852,13 +853,21 @@ async function createTicketFromInteraction({
   discordBotToken: string;
 }): Promise<Response> {
   const config = await store.readConfig();
+  let ticketNumber: number;
+
+  try {
+    ticketNumber = await store.reserveNextTicketNumber(guildId);
+  } catch (error) {
+    console.error("Failed to reserve ticket number", error);
+    return Response.json(buildEphemeralMessage("Failed to create your ticket."));
+  }
 
   let channel: Awaited<ReturnType<typeof createTicketChannel>>;
   try {
     channel = await createTicketChannel(
       {
         guildId,
-        name: buildTicketChannelName(ticketType.channelNamePrefix, openerUserId),
+        name: buildTicketChannelName(ticketNumber),
         parentId: panel.categoryChannelId,
         botUserId: config.botUserId,
         openerUserId,
@@ -892,7 +901,7 @@ async function createTicketFromInteraction({
     persisted = true;
     await createDiscordChannelMessage(
       channel.id,
-      buildTicketOpeningMessage(instance),
+      buildTicketOpeningMessage(instance, ticketNumber),
       discordBotToken
     );
   } catch (error) {
@@ -1286,23 +1295,27 @@ function getInteractionMemberRoles(interaction: DiscordInteraction): string[] {
   return interaction.member.roles.filter((roleId): roleId is string => typeof roleId === "string");
 }
 
-function buildTicketOpeningMessage(instance: TicketInstance) {
-  const answerLines =
+function buildTicketOpeningMessage(instance: TicketInstance, ticketNumber: number) {
+  const fields =
     instance.answers.length === 0
-      ? ["Submitted Answers:", "- No answers provided."]
-      : [
-          "Submitted Answers:",
-          ...instance.answers.map((answer) => `- ${answer.label}: ${answer.value || "(blank)"}`),
-        ];
+      ? [{ name: "Submitted Answers", value: "No answers provided." }]
+      : instance.answers.map((answer) => ({
+          name: answer.label,
+          value: answer.value || "(blank)",
+        }));
 
   return {
-    content: [
-      `<@${instance.openerUserId}> opened a new ticket.`,
-      `Ticket Type: ${instance.ticketTypeLabel} (${instance.ticketTypeId})`,
-      `Opened by: <@${instance.openerUserId}>`,
-      ...answerLines,
-    ].join("\n"),
+    content: `<@${instance.openerUserId}>`,
     allowed_mentions: { users: [instance.openerUserId] },
+    embeds: [
+      {
+        title: `${instance.ticketTypeLabel} Ticket #${formatTicketNumber(ticketNumber)}`,
+        color: 0x2ecc71,
+        fields: [{ name: "User", value: `<@${instance.openerUserId}>` }, ...fields],
+        footer: { text: `Ticket type: ${instance.ticketTypeId}` },
+        timestamp: new Date(instance.openedAtMs).toISOString(),
+      },
+    ],
     components: [
       {
         type: 1,

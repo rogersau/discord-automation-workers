@@ -1654,6 +1654,9 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
         },
+        async reserveNextTicketNumber() {
+          return 1;
+        },
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;
         },
@@ -1736,9 +1739,20 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
       (call) => call.method === "POST" && call.url.endsWith("/channels/ticket-channel-1/messages")
     );
     assert.deepEqual(openMessageCall?.body, {
-      content:
-        "<@user-1> opened a new ticket.\nTicket Type: Appeal (appeals)\nOpened by: <@user-1>\nSubmitted Answers:\n- Why are you opening this ticket?: Need help",
+      content: "<@user-1>",
       allowed_mentions: { users: ["user-1"] },
+      embeds: [
+        {
+          title: "Appeal Ticket #001",
+          color: 3066993,
+          fields: [
+            { name: "User", value: "<@user-1>" },
+            { name: "Why are you opening this ticket?", value: "Need help" },
+          ],
+          footer: { text: "Ticket type: appeals" },
+          timestamp: "2023-11-14T22:13:20.000Z",
+        },
+      ],
       components: [
         {
           type: 1,
@@ -1862,6 +1876,9 @@ test("createRuntimeApp creates a ticket immediately when the ticket type has no 
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
         },
+        async reserveNextTicketNumber() {
+          return 1;
+        },
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;
         },
@@ -1907,9 +1924,20 @@ test("createRuntimeApp creates a ticket immediately when the ticket type has no 
       (call) => call.method === "POST" && call.url.endsWith("/channels/ticket-channel-1/messages")
     );
     assert.deepEqual(openMessageCall?.body, {
-      content:
-        "<@user-1> opened a new ticket.\nTicket Type: Appeal (appeals)\nOpened by: <@user-1>\nSubmitted Answers:\n- No answers provided.",
+      content: "<@user-1>",
       allowed_mentions: { users: ["user-1"] },
+      embeds: [
+        {
+          title: "Appeal Ticket #001",
+          color: 3066993,
+          fields: [
+            { name: "User", value: "<@user-1>" },
+            { name: "Submitted Answers", value: "No answers provided." },
+          ],
+          footer: { text: "Ticket type: appeals" },
+          timestamp: "2023-11-14T22:13:20.000Z",
+        },
+      ],
       components: [
         {
           type: 1,
@@ -1966,6 +1994,9 @@ test("createRuntimeApp rolls back ticket creation when the opening message fails
       store: {
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
+        },
+        async reserveNextTicketNumber() {
+          return 1;
         },
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;
@@ -2037,6 +2068,9 @@ test("createRuntimeApp returns an ephemeral failure when ticket channel creation
       store: {
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
+        },
+        async reserveNextTicketNumber() {
+          return 1;
         },
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;

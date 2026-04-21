@@ -57,6 +57,31 @@ test("createCloudflareStoreClient.upsertAppConfig sends POST to /app-config", as
   ]);
 });
 
+test("createCloudflareStoreClient.reserveNextTicketNumber sends POST to /ticket-number/next", async () => {
+  const requests: Array<{ url: string; method: string; body: string | null }> = [];
+  const storeClient = createCloudflareStoreClient({
+    fetch(input, init) {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return Promise.resolve(Response.json({ ticketNumber: 7 }) as any);
+    },
+  });
+
+  const ticketNumber = await storeClient.reserveNextTicketNumber("guild-123");
+
+  assert.equal(ticketNumber, 7);
+  assert.deepEqual(requests, [
+    {
+      url: "https://moderation-store/ticket-number/next",
+      method: "POST",
+      body: JSON.stringify({ guildId: "guild-123" }),
+    },
+  ]);
+});
+
 test("createCloudflareStoreClient.listTimedRolesByGuild sends GET with guildId query param", async () => {
   const requests: Array<{ url: string; method: string; body: string | null }> = [];
   const storeClient = createCloudflareStoreClient({

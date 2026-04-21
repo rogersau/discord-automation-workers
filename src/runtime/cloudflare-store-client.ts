@@ -23,6 +23,15 @@ export function createCloudflareStoreClient(storeStub: { fetch: FetchLike }) {
         })
       );
     },
+    async reserveNextTicketNumber(guildId: string): Promise<number> {
+      const response = await readJson<{ ticketNumber: number }>(
+        storeStub.fetch("https://moderation-store/ticket-number/next", {
+          method: "POST",
+          body: JSON.stringify({ guildId }),
+        })
+      );
+      return response.ticketNumber;
+    },
     async readTicketPanelConfig(guildId: string): Promise<TicketPanelConfig | null> {
       return readJson<TicketPanelConfig | null>(
         storeStub.fetch(`https://moderation-store/ticket-panel?guildId=${encodeURIComponent(guildId)}`)

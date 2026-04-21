@@ -11,6 +11,7 @@ import {
   buildTicketModalResponse,
   buildTicketOpenCustomId,
   extractTicketAnswersFromModal,
+  formatTicketNumber,
   parseTicketCustomId,
   renderTicketTranscript,
 } from "../src/tickets";
@@ -55,8 +56,11 @@ test("parseTicketCustomId parses open and close custom IDs", () => {
   });
 });
 
-test("buildTicketChannelName prefixes the opener user id", () => {
-  assert.equal(buildTicketChannelName("appeal", "user-1"), "appeal-user-1");
+test("buildTicketChannelName zero-pads ticket numbers", () => {
+  assert.equal(buildTicketChannelName(1), "001");
+  assert.equal(buildTicketChannelName(12), "012");
+  assert.equal(buildTicketChannelName(123), "123");
+  assert.equal(formatTicketNumber(1000), "1000");
 });
 
 test("extractTicketAnswersFromModal reads submitted modal fields", () => {

@@ -1,3 +1,4 @@
+import { buildTicketChannelName } from "../tickets";
 import type { RuntimeStore } from "../runtime/contracts";
 import type { TicketPanelConfig, TicketTypeConfig, TicketInstance, TicketAnswer } from "../types";
 
@@ -28,13 +29,14 @@ export class TicketService {
 
   async openTicket(options: TicketServiceOptions): Promise<TicketInstance> {
     const config = await this.store.readConfig();
+    const ticketNumber = await this.store.reserveNextTicketNumber(options.guildId);
 
     // Create Discord channel
     if (!this.createChannel) {
       throw new Error("createChannel handler not configured");
     }
 
-    const channelName = `${options.ticketType.channelNamePrefix}-${options.openerUserId}`;
+    const channelName = buildTicketChannelName(ticketNumber);
     const channel = await this.createChannel({
       guildId: options.guildId,
       name: channelName,

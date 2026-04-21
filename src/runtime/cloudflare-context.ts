@@ -35,6 +35,7 @@ export function createCloudflareContext(env: Env): RuntimeAppContext {
       readConfig: storeClient.readConfig,
       upsertAppConfig: storeClient.upsertAppConfig,
       applyGuildEmojiMutation: storeClient.applyGuildEmojiMutation,
+      reserveNextTicketNumber: storeClient.reserveNextTicketNumber,
       readTicketPanelConfig: storeClient.readTicketPanelConfig,
       upsertTicketPanelConfig: storeClient.upsertTicketPanelConfig,
       createTicketInstance: storeClient.createTicketInstance,

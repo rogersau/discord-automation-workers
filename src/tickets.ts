@@ -124,8 +124,16 @@ export function buildTicketModalResponse(ticketType: TicketTypeConfig): TicketMo
   };
 }
 
-export function buildTicketChannelName(prefix: string, openerUserId: string): string {
-  return `${prefix}-${openerUserId}`;
+export function formatTicketNumber(ticketNumber: number): string {
+  if (!Number.isInteger(ticketNumber) || ticketNumber < 1) {
+    throw new Error("Ticket number must be a positive integer");
+  }
+
+  return String(ticketNumber).padStart(3, "0");
+}
+
+export function buildTicketChannelName(ticketNumber: number): string {
+  return formatTicketNumber(ticketNumber);
 }
 
 export function extractTicketAnswersFromModal(
