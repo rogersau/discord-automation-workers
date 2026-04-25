@@ -267,7 +267,7 @@ test("buildTicketTranscriptSummaryEmbed includes transcript overview and identif
   assert.equal(embed.fields?.find((field) => field.name === "Channel")?.value, "#ticket-0011 (channel-1)");
   assert.equal(
     embed.fields?.find((field) => field.name === "Search keys")?.value,
-    "discord:1493598719340318791 discordid:1493598719340318791 steam64:76561198439127312"
+    "discord:1493598719340318791 steam64:76561198439127312"
   );
   assert.equal(
     embed.fields?.find((field) => field.name === "Users in transcript")?.value,

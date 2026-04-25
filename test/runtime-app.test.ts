@@ -1570,7 +1570,7 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
   const originalFetch = globalThis.fetch;
   const originalDateNow = Date.now;
   const createdInstances: TicketInstance[] = [];
-  const transcriptHtml = new Map<string, string>();
+  const transcriptHtmlByKey = new Map<string, string>();
   const closeCalls: Array<{
     guildId: string;
     channelId: string;
@@ -1598,6 +1598,21 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
     }
 
     discordCalls.push({ method, url, body });
+
+    if (url.endsWith("/users/@me/guilds") && method === "GET") {
+      return Response.json([{ id: "guild-1", name: "COLD AS FK" }]);
+    }
+
+    if (url.endsWith("/guilds/guild-1/channels") && method === "GET") {
+      return Response.json([
+        { id: "ticket-channel-1", name: "ticket-0011", type: 0, parent_id: null, position: 1 },
+        { id: "transcript-channel", name: "ticket-transcripts", type: 0, parent_id: null, position: 2 },
+      ]);
+    }
+
+    if (url.endsWith("/guilds/guild-1/roles") && method === "GET") {
+      return Response.json([]);
+    }
 
     if (url.endsWith("/guilds/guild-1/channels") && method === "POST") {
       return Response.json({ id: "ticket-channel-1" });
@@ -1657,10 +1672,10 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
       verifyDiscordRequest: async () => true,
       ticketTranscriptBlobs: {
         async putHtml(key: string, html: string) {
-          transcriptHtml.set(key, html);
+          transcriptHtmlByKey.set(key, html);
         },
         async getHtml(key: string) {
-          return transcriptHtml.get(key) ?? null;
+          return transcriptHtmlByKey.get(key) ?? null;
         },
       },
       store: {
@@ -1870,7 +1885,7 @@ Closed by: user-1
 
 ## Messages
 [2024-01-01T00:00:00.000Z] Alice: Need help
-[2024-01-01T00:00:01.000Z] Support: Support reply
+[2024-01-01T00:00:01.000Z] CAF Assist: Support reply
 `);
 
     const transcriptResponse = await app.fetch(
@@ -1878,10 +1893,10 @@ Closed by: user-1
     );
     assert.equal(transcriptResponse.status, 200);
     assert.match(transcriptResponse.headers.get("content-type") ?? "", /text\/html/);
-    const transcriptHtml = await transcriptResponse.text();
-    assert.match(transcriptHtml, /<h1>Ticket Transcript<\/h1>/);
-    assert.match(transcriptHtml, /Opened by<\/dt><dd>Alice \(user-1\)<\/dd>/);
-    assert.match(transcriptHtml, /Closed by<\/dt><dd>Alice \(user-1\)<\/dd>/);
+    const transcriptHtmlResponse = await transcriptResponse.text();
+    assert.match(transcriptHtmlResponse, /<h1>Ticket Transcript<\/h1>/);
+    assert.match(transcriptHtmlResponse, /Opened by<\/dt><dd>Alice \(user-1\)<\/dd>/);
+    assert.match(transcriptHtmlResponse, /Closed by<\/dt><dd>Alice \(user-1\)<\/dd>/);
   } finally {
     Date.now = originalDateNow;
     globalThis.fetch = originalFetch;

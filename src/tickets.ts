@@ -520,13 +520,13 @@ function buildTicketTranscriptSearchKeys(instance: TicketInstance): string[] {
   const keys = new Set<string>([`discord:${instance.openerUserId}`]);
 
   for (const answer of instance.answers) {
-    const normalizedKey = normalizeSearchKey(answer.questionId || answer.label);
+    const normalizedKey = canonicalizeSearchKey(normalizeSearchKey(answer.questionId || answer.label));
     const normalizedValue = answer.value.trim();
     if (!normalizedKey || !normalizedValue) {
       continue;
     }
 
-    if (!/^(discord|discordid|steam|steam64|steamid|userid|userid64|id)$/.test(normalizedKey)) {
+    if (!/^(discord|steam|steam64|userid|id)$/.test(normalizedKey)) {
       continue;
     }
 
@@ -542,6 +542,26 @@ function buildTicketTranscriptSearchKeys(instance: TicketInstance): string[] {
 
 function normalizeSearchKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function canonicalizeSearchKey(value: string): string {
+  if (value.includes("discord")) {
+    return "discord";
+  }
+
+  if (value.includes("steam64")) {
+    return "steam64";
+  }
+
+  if (value.includes("steam")) {
+    return "steam";
+  }
+
+  if (value === "userid64") {
+    return "userid";
+  }
+
+  return value;
 }
 
 function truncateDiscordFieldName(value: string): string {
