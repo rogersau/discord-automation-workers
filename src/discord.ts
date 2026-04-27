@@ -39,6 +39,7 @@ export interface CreateChannelMessageInput {
   content?: string;
   embeds?: DiscordEmbed[];
   allowed_mentions?: DiscordAllowedMentions;
+  components?: unknown[];
 }
 
 export interface DiscordEmbedField {
