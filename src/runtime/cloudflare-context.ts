@@ -41,6 +41,33 @@ export function createCloudflareContext(env: Env): RuntimeAppContext {
 
           return object.text();
         },
+        async putAttachment(
+          key: string,
+          body: ReadableStream<Uint8Array> | ArrayBuffer | string,
+          options: { contentType: string | null }
+        ): Promise<void> {
+          await env.TICKET_TRANSCRIPTS_BUCKET?.put(key, body, {
+            httpMetadata: options.contentType
+              ? {
+                  contentType: options.contentType,
+                }
+              : undefined,
+          });
+        },
+        async getAttachment(key: string): Promise<{
+          body: ReadableStream<Uint8Array> | ArrayBuffer | string;
+          contentType: string | null;
+        } | null> {
+          const object = await env.TICKET_TRANSCRIPTS_BUCKET?.get(key);
+          if (!object) {
+            return null;
+          }
+
+          return {
+            body: object.body,
+            contentType: object.httpMetadata?.contentType ?? null,
+          };
+        },
       }
     : undefined;
 

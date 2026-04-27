@@ -34,6 +34,8 @@ import {
   hasGuildAdminPermission,
 } from "../discord-interactions";
 import {
+  buildTicketTranscriptAttachmentPath,
+  buildTicketTranscriptAttachmentStorageKey,
   buildTicketTranscriptPath,
   buildTicketTranscriptStorageKey,
   buildTicketChannelName,
@@ -46,6 +48,8 @@ import {
   parseTicketCustomId,
   renderTicketTranscriptHtml,
   renderTicketTranscript,
+  type TicketTranscriptAttachment,
+  type TicketTranscriptMessage,
 } from "../tickets";
 import { formatTimedRoleExpiry, parseTimedRoleDuration } from "../timed-roles";
 import {
@@ -1001,11 +1005,12 @@ async function handleTicketCloseInteraction(
   let transcriptMessageId: string;
   try {
     const messages = await listAllChannelMessages(channelId, discordBotToken);
-    const transcriptMessages = messages.map((message) => ({
+    let transcriptMessages: TicketTranscriptMessage[] = messages.map((message) => ({
       authorId: message.author.id,
       authorTag: resolveDiscordMessageDisplayName(message),
       content: message.content,
       createdAtMs: Date.parse(message.timestamp),
+      attachments: mapDiscordMessageAttachments(message),
     }));
     const participantDisplayNames = new Map<string, string>();
     for (const message of transcriptMessages) {
@@ -1035,16 +1040,24 @@ async function handleTicketCloseInteraction(
         getInteractionUserDisplayName(interaction) ??
         (closingTicket.closedByUserId ? participantDisplayNames.get(closingTicket.closedByUserId) ?? null : null),
     };
-    const transcript = renderTicketTranscript(closingTicket, transcriptMessages);
     let transcriptHtmlUrl: string | undefined;
 
     if (ticketTranscriptBlobs) {
+      transcriptMessages = await archiveTicketTranscriptAttachments(
+        transcriptMessages,
+        guildId,
+        channelId,
+        requestOrigin,
+        ticketTranscriptBlobs
+      );
       await ticketTranscriptBlobs.putHtml(
         buildTicketTranscriptStorageKey(guildId, channelId),
         renderTicketTranscriptHtml(closingTicket, transcriptMessages, transcriptPresentation)
       );
       transcriptHtmlUrl = `${requestOrigin}${buildTicketTranscriptPath(guildId, channelId)}`;
     }
+
+    const transcript = renderTicketTranscript(closingTicket, transcriptMessages);
 
     const transcriptMessage = await uploadTranscriptToChannel(
       panel.transcriptChannelId,
@@ -1373,6 +1386,126 @@ function resolveDiscordMessageDisplayName(message: {
   author: { global_name: string | null; username: string };
 }): string {
   return message.member?.nick ?? message.author.global_name ?? message.author.username;
+}
+
+function mapDiscordMessageAttachments(message: { attachments?: unknown }): TicketTranscriptAttachment[] {
+  if (!Array.isArray(message.attachments)) {
+    return [];
+  }
+
+  const attachments: TicketTranscriptAttachment[] = [];
+  for (const attachment of message.attachments) {
+    if (!isRecord(attachment)) {
+      continue;
+    }
+
+    const id = asOptionalString(attachment.id);
+    const filename = asOptionalString(attachment.filename);
+    const url = asOptionalString(attachment.url);
+    if (!id || !filename || !url) {
+      continue;
+    }
+
+    attachments.push({
+      id,
+      filename,
+      url,
+      proxyUrl: asOptionalString(attachment.proxy_url),
+      contentType: normalizeContentType(asOptionalString(attachment.content_type)),
+      size: asOptionalFiniteNumber(attachment.size),
+      width: asOptionalFiniteNumber(attachment.width),
+      height: asOptionalFiniteNumber(attachment.height),
+    });
+  }
+
+  return attachments;
+}
+
+async function archiveTicketTranscriptAttachments(
+  messages: TicketTranscriptMessage[],
+  guildId: string,
+  channelId: string,
+  requestOrigin: string,
+  ticketTranscriptBlobs: TicketTranscriptBlobStore
+): Promise<TicketTranscriptMessage[]> {
+  return Promise.all(
+    messages.map(async (message) => {
+      const attachments = message.attachments ?? [];
+      if (attachments.length === 0) {
+        return message;
+      }
+
+      return {
+        ...message,
+        attachments: await Promise.all(
+          attachments.map((attachment) =>
+            archiveTicketTranscriptAttachment(
+              attachment,
+              guildId,
+              channelId,
+              requestOrigin,
+              ticketTranscriptBlobs
+            )
+          )
+        ),
+      };
+    })
+  );
+}
+
+async function archiveTicketTranscriptAttachment(
+  attachment: TicketTranscriptAttachment,
+  guildId: string,
+  channelId: string,
+  requestOrigin: string,
+  ticketTranscriptBlobs: TicketTranscriptBlobStore
+): Promise<TicketTranscriptAttachment> {
+  const sourceUrl = getHttpUrl(attachment.url);
+  if (!sourceUrl) {
+    throw new Error(`Ticket attachment ${attachment.id} has an unsupported URL`);
+  }
+
+  const response = await fetch(sourceUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to archive ticket attachment ${attachment.id}: ${response.status}`);
+  }
+
+  const contentType = normalizeContentType(response.headers.get("content-type")) ?? attachment.contentType;
+  const body = response.body ?? (await response.arrayBuffer());
+  await ticketTranscriptBlobs.putAttachment(
+    buildTicketTranscriptAttachmentStorageKey(guildId, channelId, attachment.id, attachment.filename),
+    body,
+    { contentType }
+  );
+
+  return {
+    ...attachment,
+    url: `${requestOrigin}${buildTicketTranscriptAttachmentPath(guildId, channelId, attachment.id, attachment.filename)}`,
+    proxyUrl: null,
+    contentType,
+  };
+}
+
+function asOptionalFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeContentType(value: string | null): string | null {
+  const normalized = value?.split(";")[0]?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function getHttpUrl(value: string): string | null {
+  try {
+    const parsedUrl = new URL(value);
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+      return null;
+    }
+
+    return parsedUrl.toString();
+  } catch {
+    return null;
+  }
 }
 
 function buildTicketOpeningMessage(instance: TicketInstance, ticketNumber: number) {

@@ -34,11 +34,23 @@ export interface TicketModalSubmitInteraction {
   };
 }
 
+export interface TicketTranscriptAttachment {
+  id: string;
+  filename: string;
+  url: string;
+  proxyUrl: string | null;
+  contentType: string | null;
+  size: number | null;
+  width: number | null;
+  height: number | null;
+}
+
 export interface TicketTranscriptMessage {
   authorId: string;
   authorTag: string | null;
   content: string;
   createdAtMs: number;
+  attachments?: TicketTranscriptAttachment[];
 }
 
 export interface TicketTranscriptPresentationOptions {
@@ -152,8 +164,26 @@ export function buildTicketTranscriptStorageKey(guildId: string, channelId: stri
   return `${guildId}/${channelId}.html`;
 }
 
+export function buildTicketTranscriptAttachmentStorageKey(
+  guildId: string,
+  channelId: string,
+  attachmentId: string,
+  filename: string
+): string {
+  return `${guildId}/${channelId}/attachments/${attachmentId}/${encodeURIComponent(filename)}`;
+}
+
 export function buildTicketTranscriptPath(guildId: string, channelId: string): string {
   return `/transcripts/${encodeURIComponent(guildId)}/${encodeURIComponent(channelId)}`;
+}
+
+export function buildTicketTranscriptAttachmentPath(
+  guildId: string,
+  channelId: string,
+  attachmentId: string,
+  filename: string
+): string {
+  return `${buildTicketTranscriptPath(guildId, channelId)}/media/${encodeURIComponent(attachmentId)}/${encodeURIComponent(filename)}`;
 }
 
 export function extractTicketAnswersFromModal(
@@ -215,9 +245,13 @@ export function renderTicketTranscript(
   } else {
     for (const message of sortedMessages) {
       const author = message.authorTag ?? message.authorId;
+      const content = message.content.length > 0 ? message.content : "[no text content]";
       lines.push(
-        `[${new Date(message.createdAtMs).toISOString()}] ${author}: ${message.content}`
+        `[${new Date(message.createdAtMs).toISOString()}] ${author}: ${content}`
       );
+      for (const attachment of message.attachments ?? []) {
+        lines.push(formatTranscriptAttachmentTextLine(attachment));
+      }
     }
   }
 
@@ -245,12 +279,17 @@ export function renderTicketTranscriptHtml(
       : `<ol class="messages">${sortedMessages
           .map((message) => {
             const author = message.authorTag ?? message.authorId;
+            const contentMarkup = message.content.length > 0
+              ? `<div class="message-content">${escapeHtml(message.content)}</div>`
+              : "";
+            const attachmentMarkup = renderTranscriptAttachments(message.attachments ?? []);
             return `<li>
   <header>
     <span class="author">${escapeHtml(author)}</span>
     <time datetime="${new Date(message.createdAtMs).toISOString()}">${new Date(message.createdAtMs).toISOString()}</time>
   </header>
-  <div class="message-content">${escapeHtml(message.content)}</div>
+  ${contentMarkup}
+  ${attachmentMarkup}
 </li>`;
           })
           .join("")}</ol>`;
@@ -341,6 +380,53 @@ export function renderTicketTranscriptHtml(
     .empty {
       color: #94a3b8;
     }
+    .attachments {
+      display: grid;
+      gap: 12px;
+      list-style: none;
+      margin: 12px 0 0;
+      padding: 0;
+    }
+    .attachment {
+      overflow: hidden;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      background: #020617;
+    }
+    .attachment-preview {
+      display: block;
+      color: inherit;
+      text-decoration: none;
+    }
+    .attachment img,
+    .attachment video {
+      display: block;
+      max-width: 100%;
+      background: #000;
+    }
+    .attachment img {
+      width: auto;
+      max-height: 480px;
+    }
+    .attachment video {
+      width: 100%;
+      max-height: 520px;
+    }
+    .attachment-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      padding: 10px 12px;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+    }
+    .attachment-filename {
+      color: #f8fafc;
+      font-weight: 700;
+    }
+    .attachment-meta a {
+      color: #93c5fd;
+    }
   </style>
 </head>
 <body>
@@ -378,6 +464,10 @@ export function buildTicketTranscriptSummaryEmbed(
   const participantLines = summarizeTranscriptParticipants(sortedMessages)
     .map((participant) => `${participant.messageCount} - ${participant.displayName}`)
     .join("\n");
+  const attachmentCount = sortedMessages.reduce(
+    (total, message) => total + (message.attachments?.length ?? 0),
+    0
+  );
   const searchKeys = buildTicketTranscriptSearchKeys(instance);
   const fields = [
     {
@@ -400,6 +490,15 @@ export function buildTicketTranscriptSummaryEmbed(
       value: String(sortedMessages.length),
       inline: true,
     },
+    ...(attachmentCount > 0
+      ? [
+          {
+            name: "Attachments",
+            value: String(attachmentCount),
+            inline: true,
+          },
+        ]
+      : []),
     ...(searchKeys.length > 0
       ? [
           {
@@ -443,6 +542,142 @@ export function buildTicketTranscriptSummaryEmbed(
     fields,
     timestamp: new Date(instance.closedAtMs ?? instance.openedAtMs).toISOString(),
   };
+}
+
+function renderTranscriptAttachments(attachments: TicketTranscriptAttachment[]): string {
+  if (attachments.length === 0) {
+    return "";
+  }
+
+  return `<ul class="attachments">${attachments.map(renderTranscriptAttachment).join("")}</ul>`;
+}
+
+function renderTranscriptAttachment(attachment: TicketTranscriptAttachment): string {
+  const safeUrl = getSafeAttachmentUrl(attachment);
+  const filename = attachment.filename.trim().length > 0 ? attachment.filename : "attachment";
+  const escapedFilename = escapeHtml(filename);
+  const details = formatTranscriptAttachmentDetails(attachment);
+  const detailMarkup = details.length > 0 ? `<span>${escapeHtml(details)}</span>` : "";
+  const kind = getTranscriptAttachmentKind(attachment);
+  const previewMarkup = safeUrl ? renderTranscriptAttachmentPreview(attachment, safeUrl, kind) : "";
+  const linkMarkup = safeUrl
+    ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Open attachment</a>`
+    : "<span>Attachment URL unavailable</span>";
+
+  return `<li class="attachment attachment-${kind}">
+  ${previewMarkup}
+  <div class="attachment-meta">
+    <span class="attachment-filename">${escapedFilename}</span>
+    <span>${formatTranscriptAttachmentKind(kind)}</span>
+    ${detailMarkup}
+    ${linkMarkup}
+  </div>
+</li>`;
+}
+
+function renderTranscriptAttachmentPreview(
+  attachment: TicketTranscriptAttachment,
+  safeUrl: string,
+  kind: TranscriptAttachmentKind
+): string {
+  const escapedUrl = escapeHtml(safeUrl);
+  const escapedFilename = escapeHtml(attachment.filename.trim().length > 0 ? attachment.filename : "attachment");
+
+  if (kind === "image") {
+    return `<a class="attachment-preview" href="${escapedUrl}" target="_blank" rel="noopener noreferrer"><img src="${escapedUrl}" alt="${escapedFilename}" loading="lazy" /></a>`;
+  }
+
+  if (kind === "video") {
+    const contentType = attachment.contentType ? ` type="${escapeHtml(attachment.contentType)}"` : "";
+    return `<video controls preload="metadata"><source src="${escapedUrl}"${contentType} /></video>`;
+  }
+
+  return "";
+}
+
+function formatTranscriptAttachmentTextLine(attachment: TicketTranscriptAttachment): string {
+  const kind = getTranscriptAttachmentKind(attachment);
+  const filename = attachment.filename.trim().length > 0 ? attachment.filename : "attachment";
+  const details = formatTranscriptAttachmentDetails(attachment);
+  const safeUrl = getSafeAttachmentUrl(attachment);
+  return `  ${formatTranscriptAttachmentKind(kind)}: ${filename}${details ? ` (${details})` : ""}${safeUrl ? ` - ${safeUrl}` : " - URL unavailable"}`;
+}
+
+type TranscriptAttachmentKind = "image" | "video" | "file";
+
+function getTranscriptAttachmentKind(attachment: TicketTranscriptAttachment): TranscriptAttachmentKind {
+  const contentType = attachment.contentType?.toLowerCase() ?? "";
+  if (contentType.startsWith("image/")) {
+    return "image";
+  }
+
+  if (contentType.startsWith("video/")) {
+    return "video";
+  }
+
+  const filename = attachment.filename.toLowerCase();
+  if (/\.(png|jpe?g|gif|webp|avif|bmp)$/.test(filename)) {
+    return "image";
+  }
+
+  if (/\.(mp4|webm|mov|m4v|ogg|ogv)$/.test(filename)) {
+    return "video";
+  }
+
+  return "file";
+}
+
+function formatTranscriptAttachmentKind(kind: TranscriptAttachmentKind): string {
+  switch (kind) {
+    case "image":
+      return "Image";
+    case "video":
+      return "Video";
+    case "file":
+    default:
+      return "Attachment";
+  }
+}
+
+function formatTranscriptAttachmentDetails(attachment: TicketTranscriptAttachment): string {
+  return [attachment.contentType, formatBytes(attachment.size)]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(", ");
+}
+
+function formatBytes(size: number | null): string | null {
+  if (typeof size !== "number" || !Number.isFinite(size) || size < 0) {
+    return null;
+  }
+
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  const units = ["KB", "MB", "GB"];
+  let value = size / 1024;
+  for (const unit of units) {
+    if (value < 1024 || unit === units[units.length - 1]) {
+      const formatted = value >= 10 || Number.isInteger(value) ? String(Math.round(value)) : value.toFixed(1);
+      return `${formatted} ${unit}`;
+    }
+    value /= 1024;
+  }
+
+  return null;
+}
+
+function getSafeAttachmentUrl(attachment: TicketTranscriptAttachment): string | null {
+  try {
+    const parsedUrl = new URL(attachment.url);
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+      return null;
+    }
+
+    return parsedUrl.toString();
+  } catch {
+    return null;
+  }
 }
 
 function buildTicketTextInput(question: TicketQuestion) {

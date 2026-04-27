@@ -103,6 +103,18 @@ export interface DiscordMessageResource {
   content: string;
 }
 
+export interface DiscordMessageAttachmentResource {
+  id: string;
+  filename: string;
+  description?: string | null;
+  content_type?: string | null;
+  size?: number;
+  url: string;
+  proxy_url?: string;
+  height?: number | null;
+  width?: number | null;
+}
+
 export interface DiscordMessageListItem extends DiscordMessageResource {
   timestamp: string;
   author: {
@@ -114,6 +126,7 @@ export interface DiscordMessageListItem extends DiscordMessageResource {
   member?: {
     nick?: string | null;
   };
+  attachments?: DiscordMessageAttachmentResource[];
 }
 
 export function assertValidDiscordPublicKey(publicKeyHex: string): string {

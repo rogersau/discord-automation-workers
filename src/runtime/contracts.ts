@@ -45,6 +45,15 @@ export interface RuntimeStore {
 export interface TicketTranscriptBlobStore {
   putHtml(key: string, html: string): Promise<void>;
   getHtml(key: string): Promise<string | null>;
+  putAttachment(
+    key: string,
+    body: ReadableStream<Uint8Array> | ArrayBuffer | string,
+    options: { contentType: string | null }
+  ): Promise<void>;
+  getAttachment(key: string): Promise<{
+    body: ReadableStream<Uint8Array> | ArrayBuffer | string;
+    contentType: string | null;
+  } | null>;
 }
 
 export interface GatewayController {

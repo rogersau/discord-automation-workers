@@ -13,6 +13,7 @@ import {
   buildTicketCloseCustomId,
   buildTicketOpenCustomId,
   buildTicketModalResponse,
+  buildTicketTranscriptAttachmentPath,
   buildTicketTranscriptPath,
 } from "../src/tickets";
 import type { TicketInstance, TicketPanelConfig, TimedRoleAssignment } from "../src/types";
@@ -1571,6 +1572,7 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
   const originalDateNow = Date.now;
   const createdInstances: TicketInstance[] = [];
   const transcriptHtmlByKey = new Map<string, string>();
+  const transcriptMediaByKey = new Map<string, { body: ArrayBuffer; contentType: string | null }>();
   const closeCalls: Array<{
     guildId: string;
     channelId: string;
@@ -1650,8 +1652,38 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
             discriminator: "0001",
             global_name: "Alice",
           },
+          attachments: [
+            {
+              id: "attachment-image-1",
+              filename: "proof.png",
+              content_type: "image/png",
+              size: 1536,
+              url: "https://cdn.discordapp.com/attachments/ticket-channel-1/proof.png",
+              proxy_url: "https://media.discordapp.net/attachments/ticket-channel-1/proof.png",
+              width: 640,
+              height: 480,
+            },
+            {
+              id: "attachment-video-1",
+              filename: "clip.mp4",
+              content_type: "video/mp4",
+              size: 1_048_576,
+              url: "https://cdn.discordapp.com/attachments/ticket-channel-1/clip.mp4",
+              proxy_url: "https://media.discordapp.net/attachments/ticket-channel-1/clip.mp4",
+              width: 1280,
+              height: 720,
+            },
+          ],
         },
       ]);
+    }
+
+    if (url === "https://cdn.discordapp.com/attachments/ticket-channel-1/proof.png" && method === "GET") {
+      return new Response("image-bytes", { headers: { "content-type": "image/png" } });
+    }
+
+    if (url === "https://cdn.discordapp.com/attachments/ticket-channel-1/clip.mp4" && method === "GET") {
+      return new Response("video-bytes", { headers: { "content-type": "video/mp4" } });
     }
 
     if (url.endsWith("/channels/transcript-channel/messages") && method === "POST") {
@@ -1676,6 +1708,19 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
         },
         async getHtml(key: string) {
           return transcriptHtmlByKey.get(key) ?? null;
+        },
+        async putAttachment(
+          key: string,
+          body: ReadableStream<Uint8Array> | ArrayBuffer | string,
+          options: { contentType: string | null }
+        ) {
+          transcriptMediaByKey.set(key, {
+            body: await new Response(body).arrayBuffer(),
+            contentType: options.contentType,
+          });
+        },
+        async getAttachment(key: string) {
+          return transcriptMediaByKey.get(key) ?? null;
         },
       },
       store: {
@@ -1865,6 +1910,12 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
       transcriptPayload.embeds?.[0]?.fields?.find((field) => field.name === "Users in transcript")?.value,
       "1 - Alice\n1 - CAF Assist"
     );
+    assert.equal(
+      transcriptPayload.embeds?.[0]?.fields?.find((field) => field.name === "Attachments")?.value,
+      "2"
+    );
+    const archivedImageUrl = `https://runtime.example${buildTicketTranscriptAttachmentPath("guild-1", "ticket-channel-1", "attachment-image-1", "proof.png")}`;
+    const archivedVideoUrl = `https://runtime.example${buildTicketTranscriptAttachmentPath("guild-1", "ticket-channel-1", "attachment-video-1", "clip.mp4")}`;
     const transcriptFile = transcriptCall?.body && typeof transcriptCall.body === "object"
       ? ((transcriptCall.body as { transcript: FormDataEntryValue | null }).transcript as File | null)
       : null;
@@ -1885,6 +1936,8 @@ Closed by: user-1
 
 ## Messages
 [2024-01-01T00:00:00.000Z] Alice: Need help
+  Image: proof.png (image/png, 1.5 KB) - ${archivedImageUrl}
+  Video: clip.mp4 (video/mp4, 1 MB) - ${archivedVideoUrl}
 [2024-01-01T00:00:01.000Z] CAF Assist: Support reply
 `);
 
@@ -1897,6 +1950,13 @@ Closed by: user-1
     assert.match(transcriptHtmlResponse, /<h1>Ticket Transcript<\/h1>/);
     assert.match(transcriptHtmlResponse, /Opened by<\/dt><dd>Alice \(user-1\)<\/dd>/);
     assert.match(transcriptHtmlResponse, /Closed by<\/dt><dd>Alice \(user-1\)<\/dd>/);
+    assert.ok(transcriptHtmlResponse.includes(`<img src="${archivedImageUrl}" alt="proof.png" loading="lazy" />`));
+    assert.ok(transcriptHtmlResponse.includes(`<video controls preload="metadata"><source src="${archivedVideoUrl}" type="video/mp4" /></video>`));
+
+    const mediaResponse = await app.fetch(new Request(archivedImageUrl));
+    assert.equal(mediaResponse.status, 200);
+    assert.equal(mediaResponse.headers.get("content-type"), "image/png");
+    assert.equal(await mediaResponse.text(), "image-bytes");
   } finally {
     Date.now = originalDateNow;
     globalThis.fetch = originalFetch;

@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildTicketTranscriptAttachmentPath,
+  buildTicketTranscriptAttachmentStorageKey,
   buildTicketTranscriptPath,
   buildTicketChannelName,
   buildTicketCloseCustomId,
@@ -70,6 +72,14 @@ test("buildTicketChannelName prefixes and zero-pads ticket numbers", () => {
 test("ticket transcript path helpers build stable public paths and storage keys", () => {
   assert.equal(buildTicketTranscriptStorageKey("guild-1", "channel-1"), "guild-1/channel-1.html");
   assert.equal(buildTicketTranscriptPath("guild-1", "channel-1"), "/transcripts/guild-1/channel-1");
+  assert.equal(
+    buildTicketTranscriptAttachmentStorageKey("guild-1", "channel-1", "attachment-1", "proof image.png"),
+    "guild-1/channel-1/attachments/attachment-1/proof%20image.png"
+  );
+  assert.equal(
+    buildTicketTranscriptAttachmentPath("guild-1", "channel-1", "attachment-1", "proof image.png"),
+    "/transcripts/guild-1/channel-1/media/attachment-1/proof%20image.png"
+  );
 });
 
 test("extractTicketAnswersFromModal reads submitted modal fields", () => {
@@ -156,6 +166,59 @@ test("renderTicketTranscript includes ticket metadata, answers, and chronologica
   assert.ok(transcript.indexOf("Support#0002: First reply") < transcript.indexOf("User#0001: Hello"));
 });
 
+test("renderTicketTranscript includes attachment links below their messages", () => {
+  const transcript = renderTicketTranscript(
+    {
+      guildId: "guild-1",
+      channelId: "channel-1",
+      ticketTypeId: "appeals",
+      ticketTypeLabel: "Appeal",
+      openerUserId: "user-1",
+      supportRoleId: "role-1",
+      status: "closed",
+      answers: [],
+      openedAtMs: 1_700_000_000_000,
+      closedAtMs: 1_700_000_001_000,
+      closedByUserId: "staff-1",
+      transcriptMessageId: "msg-1",
+    },
+    [
+      {
+        authorId: "user-1",
+        authorTag: "User#0001",
+        content: "Here is the proof",
+        createdAtMs: 1_700_000_000_500,
+        attachments: [
+          {
+            id: "attachment-1",
+            filename: "proof.png",
+            url: "https://cdn.example/proof.png",
+            proxyUrl: null,
+            contentType: "image/png",
+            size: 1536,
+            width: 640,
+            height: 480,
+          },
+          {
+            id: "attachment-2",
+            filename: "clip.mp4",
+            url: "https://cdn.example/clip.mp4",
+            proxyUrl: null,
+            contentType: "video/mp4",
+            size: 1_048_576,
+            width: 1280,
+            height: 720,
+          },
+        ],
+      },
+    ]
+  );
+
+  assert.match(transcript, /User#0001: Here is the proof/);
+  assert.ok(transcript.includes("  Image: proof.png (image/png, 1.5 KB) - https://cdn.example/proof.png"));
+  assert.ok(transcript.includes("  Video: clip.mp4 (video/mp4, 1 MB) - https://cdn.example/clip.mp4"));
+});
+
 test("renderTicketTranscriptHtml escapes content and includes transcript metadata", () => {
   const html = renderTicketTranscriptHtml(
     {
@@ -187,6 +250,70 @@ test("renderTicketTranscriptHtml escapes content and includes transcript metadat
   assert.match(html, /Need &lt;help&gt; &amp; support/);
   assert.match(html, /Hello &lt;script&gt;alert\(&#39;x&#39;\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>alert\('x'\)<\/script>/);
+});
+
+test("renderTicketTranscriptHtml renders image and video attachments inline", () => {
+  const html = renderTicketTranscriptHtml(
+    {
+      guildId: "guild-1",
+      channelId: "channel-1",
+      ticketTypeId: "appeals",
+      ticketTypeLabel: "Appeal",
+      openerUserId: "user-1",
+      supportRoleId: "role-1",
+      status: "closed",
+      answers: [],
+      openedAtMs: 1_700_000_000_000,
+      closedAtMs: 1_700_000_001_000,
+      closedByUserId: "staff-1",
+      transcriptMessageId: "msg-1",
+    },
+    [
+      {
+        authorId: "user-1",
+        authorTag: "User#0001",
+        content: "",
+        createdAtMs: 1_700_000_000_500,
+        attachments: [
+          {
+            id: "attachment-1",
+            filename: "proof <image>.png",
+            url: "https://cdn.example/proof.png?ex=1&is=2",
+            proxyUrl: null,
+            contentType: "image/png",
+            size: 1536,
+            width: 640,
+            height: 480,
+          },
+          {
+            id: "attachment-2",
+            filename: "clip.mp4",
+            url: "https://cdn.example/clip.mp4",
+            proxyUrl: null,
+            contentType: "video/mp4",
+            size: 1_048_576,
+            width: 1280,
+            height: 720,
+          },
+          {
+            id: "attachment-3",
+            filename: "unsafe.png",
+            url: "javascript:alert(1)",
+            proxyUrl: null,
+            contentType: "image/png",
+            size: null,
+            width: null,
+            height: null,
+          },
+        ],
+      },
+    ]
+  );
+
+  assert.ok(html.includes('<img src="https://cdn.example/proof.png?ex=1&amp;is=2" alt="proof &lt;image&gt;.png" loading="lazy" />'));
+  assert.ok(html.includes('<video controls preload="metadata"><source src="https://cdn.example/clip.mp4" type="video/mp4" /></video>'));
+  assert.match(html, /Attachment URL unavailable/);
+  assert.doesNotMatch(html, /javascript:alert/);
 });
 
 test("renderTicketTranscriptHtml prefers display names for opener and closer metadata", () => {

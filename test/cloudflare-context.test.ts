@@ -75,14 +75,26 @@ test("createCloudflareContext adminSessionSecret is undefined when no admin secr
 });
 
 test("createCloudflareContext wires ticket transcript R2 helpers when a bucket is configured", async () => {
-  const bucketCalls: Array<{ action: string; key: string; body?: string }> = [];
+  const bucketCalls: Array<{ action: string; key: string; body?: unknown; contentType?: string }> = [];
   const env = createMockEnv({
     TICKET_TRANSCRIPTS_BUCKET: {
-      async put(key: string, value: string) {
-        bucketCalls.push({ action: "put", key, body: value });
+      async put(key: string, value: unknown, options?: { httpMetadata?: { contentType?: string } }) {
+        bucketCalls.push({ action: "put", key, body: value, contentType: options?.httpMetadata?.contentType });
       },
       async get(key: string) {
         bucketCalls.push({ action: "get", key });
+        if (key.endsWith("/proof.png")) {
+          return {
+            body: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("image-bytes"));
+                controller.close();
+              },
+            }),
+            httpMetadata: { contentType: "image/png" },
+          } as unknown as R2ObjectBody;
+        }
+
         return {
           text: async () => "<html>stored transcript</html>",
         } as unknown as R2ObjectBody;
@@ -94,17 +106,34 @@ test("createCloudflareContext wires ticket transcript R2 helpers when a bucket i
 
   await context.ticketTranscriptBlobs?.putHtml("guild-1/channel-1.html", "<html>stored transcript</html>");
   const html = await context.ticketTranscriptBlobs?.getHtml("guild-1/channel-1.html");
+  await context.ticketTranscriptBlobs?.putAttachment("guild-1/channel-1/attachments/attachment-1/proof.png", "image-bytes", {
+    contentType: "image/png",
+  });
+  const attachment = await context.ticketTranscriptBlobs?.getAttachment("guild-1/channel-1/attachments/attachment-1/proof.png");
 
   assert.equal(html, "<html>stored transcript</html>");
+  assert.equal(attachment?.contentType, "image/png");
+  assert.equal(await new Response(attachment?.body).text(), "image-bytes");
   assert.deepEqual(bucketCalls, [
     {
       action: "put",
       key: "guild-1/channel-1.html",
       body: "<html>stored transcript</html>",
+      contentType: "text/html; charset=utf-8",
     },
     {
       action: "get",
       key: "guild-1/channel-1.html",
+    },
+    {
+      action: "put",
+      key: "guild-1/channel-1/attachments/attachment-1/proof.png",
+      body: "image-bytes",
+      contentType: "image/png",
+    },
+    {
+      action: "get",
+      key: "guild-1/channel-1/attachments/attachment-1/proof.png",
     },
   ]);
 });
