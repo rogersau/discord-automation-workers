@@ -7,6 +7,7 @@ import test from "node:test";
 
 import { SLASH_COMMAND_DEFINITIONS } from "../src/discord-commands";
 import worker from "../src/index";
+import { createAdminRoutes } from "../src/routes/admin-routes";
 
 test("worker serves the admin shell for nested dashboard routes", async () => {
   const response = await worker.fetch(
@@ -308,4 +309,36 @@ test("worker returns 404 for GET /admin/api/config when ADMIN_UI_PASSWORD is not
   );
 
   assert.equal(response.status, 404);
+});
+
+test("POST /admin/api/blocklist validates JSON before calling the blocklist workflow", async () => {
+  const route = createAdminRoutes({
+    adminSessionSecret: "secret",
+    adminUiPassword: "password",
+    services: {
+      gatewayService: {} as never,
+      adminOverviewService: {} as never,
+      blocklistService: {
+        applyMutation: async () => {
+          throw new Error("should not be called");
+        },
+      } as never,
+      timedRoleService: {} as never,
+    },
+    handleAdminApiRequest: async () => null,
+    redirect: (location) => new Response(null, { status: 302, headers: { location } }),
+    getAdminLoginLocation: () => "/admin/login",
+    renderAdminShell: () => new Response("ok"),
+    isAdminUiAuthorized: async () => true,
+    requireAdminSession: async () => null,
+  });
+
+  const response = await route(
+    new Request("https://example.com/admin/api/blocklist", {
+      method: "POST",
+      body: JSON.stringify({ guildId: 123 }),
+    })
+  );
+
+  assert.equal(response?.status, 400);
 });

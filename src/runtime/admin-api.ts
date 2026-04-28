@@ -5,7 +5,6 @@ import type {
   AdminPermissionCheck,
   AdminPermissionCheckResponse,
   AdminPermissionFeature,
-  AppConfigMutation,
 } from "./admin-types";
 import {
   buildBlocklistPermissionChecks,
@@ -14,9 +13,8 @@ import {
   loadGuildPermissionContext,
 } from "./admin-permissions";
 import {
-  AdminApiInputError,
-  isRecord,
   parseJsonBody,
+  parseAppConfigMutation,
 } from "./admin-api-validation";
 import type { RuntimeStores } from "./app-types";
 import { handleTicketPanelAdminRequest } from "./ticket-panel-admin";
@@ -226,18 +224,3 @@ function buildAdminGuildDirectory(
     }));
 }
 
-function parseAppConfigMutation(body: unknown): AppConfigMutation {
-  if (
-    !isRecord(body) ||
-    typeof body.key !== "string" ||
-    body.key.length === 0 ||
-    typeof body.value !== "string"
-  ) {
-    throw new AdminApiInputError("Missing app config key or value");
-  }
-
-  return {
-    key: body.key,
-    value: body.value,
-  };
-}

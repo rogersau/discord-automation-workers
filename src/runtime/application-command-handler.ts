@@ -139,27 +139,21 @@ export async function handleApplicationCommand(
     if (!normalizedEmoji) {
       return Response.json(buildEphemeralMessage("Invalid emoji."));
     }
-    let isAlreadyBlocked = false;
+
     try {
-      const guildConfig = await blocklistService.getGuildBlocklist(interaction.guild_id);
-      isAlreadyBlocked = guildConfig.emojis.includes(normalizedEmoji);
+      const result = await blocklistService.addEmoji(interaction.guild_id, normalizedEmoji);
+      if (result.alreadyBlocked) {
+        return Response.json(
+          buildEphemeralMessage(`${invocation.emoji} is already blocked in this server.`)
+        );
+      }
+      return Response.json(
+        buildEphemeralMessage(`Blocked ${invocation.emoji} in this server.`)
+      );
     } catch (error) {
-      console.error("Failed to load moderation config", error);
+      console.error("Failed to update blocklist", error);
       return Response.json(buildEphemeralMessage("Failed to update the server blocklist."));
     }
-    if (isAlreadyBlocked) {
-      return Response.json(
-        buildEphemeralMessage(`${invocation.emoji} is already blocked in this server.`)
-      );
-    }
-    await blocklistService.applyMutation({
-      guildId: interaction.guild_id,
-      emoji: normalizedEmoji,
-      action: "add",
-    });
-    return Response.json(
-      buildEphemeralMessage(`Blocked ${invocation.emoji} in this server.`)
-    );
   }
 
   if (invocation.commandName === "blocklist" && invocation.subcommandName === "remove") {
@@ -167,29 +161,23 @@ export async function handleApplicationCommand(
     if (!normalizedEmoji) {
       return Response.json(buildEphemeralMessage("Invalid emoji."));
     }
-    let isBlocked = false;
+
     try {
-      const guildConfig = await blocklistService.getGuildBlocklist(interaction.guild_id);
-      isBlocked = guildConfig.emojis.includes(normalizedEmoji);
+      const result = await blocklistService.removeEmoji(interaction.guild_id, normalizedEmoji);
+      if (!result.wasBlocked) {
+        return Response.json(
+          buildEphemeralMessage(
+            `${invocation.emoji} is not currently blocked in this server.`
+          )
+        );
+      }
+      return Response.json(
+        buildEphemeralMessage(`Unblocked ${invocation.emoji} in this server.`)
+      );
     } catch (error) {
-      console.error("Failed to load moderation config", error);
+      console.error("Failed to update blocklist", error);
       return Response.json(buildEphemeralMessage("Failed to update the server blocklist."));
     }
-    if (!isBlocked) {
-      return Response.json(
-        buildEphemeralMessage(
-          `${invocation.emoji} is not currently blocked in this server.`
-        )
-      );
-    }
-    await blocklistService.applyMutation({
-      guildId: interaction.guild_id,
-      emoji: normalizedEmoji,
-      action: "remove",
-    });
-    return Response.json(
-      buildEphemeralMessage(`Unblocked ${invocation.emoji} in this server.`)
-    );
   }
 
   return Response.json(buildEphemeralMessage("Unsupported command."));

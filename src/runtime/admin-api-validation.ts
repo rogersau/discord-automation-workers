@@ -57,3 +57,72 @@ export function asBoolean(value: unknown, fieldName: string): boolean {
 
   return value;
 }
+
+export function parseBlocklistMutationBody(body: unknown): {
+  guildId: string;
+  emoji: string;
+  action: "add" | "remove";
+} {
+  if (!isRecord(body)) {
+    throw new AdminApiInputError("Invalid JSON body");
+  }
+
+  const guildId = asRequiredString(body.guildId, "guildId");
+  const emoji = asRequiredString(body.emoji, "emoji");
+  const action = asRequiredString(body.action, "action");
+
+  if (action !== "add" && action !== "remove") {
+    throw new AdminApiInputError("Invalid action. Use 'add' or 'remove'");
+  }
+
+  return { guildId, emoji, action };
+}
+
+export function parseTimedRoleMutationBody(body: unknown): {
+  guildId: string;
+  userId: string;
+  roleId: string;
+  action: "add" | "remove";
+  duration?: string;
+} {
+  if (!isRecord(body)) {
+    throw new AdminApiInputError("Invalid JSON body");
+  }
+
+  const guildId = asRequiredString(body.guildId, "guildId");
+  const userId = asRequiredString(body.userId, "userId");
+  const roleId = asRequiredString(body.roleId, "roleId");
+  const action = asRequiredString(body.action, "action");
+
+  if (action !== "add" && action !== "remove") {
+    throw new AdminApiInputError("Invalid action. Use 'add' or 'remove'");
+  }
+
+  if (action === "add") {
+    if (!body.duration || typeof body.duration !== "string" || body.duration.length === 0) {
+      throw new AdminApiInputError("Missing or invalid duration for timed role add");
+    }
+    return { guildId, userId, roleId, action, duration: body.duration };
+  }
+
+  return { guildId, userId, roleId, action };
+}
+
+export function parseAppConfigMutation(body: unknown): {
+  key: string;
+  value: string;
+} {
+  if (
+    !isRecord(body) ||
+    typeof body.key !== "string" ||
+    body.key.length === 0 ||
+    typeof body.value !== "string"
+  ) {
+    throw new AdminApiInputError("Missing app config key or value");
+  }
+
+  return {
+    key: body.key,
+    value: body.value,
+  };
+}
