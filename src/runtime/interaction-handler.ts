@@ -39,13 +39,13 @@ export async function handleInteractionRequest(
   }
 
   if (interaction?.type === 2) {
-    return handleApplicationCommand(interaction, options.store, options.discordBotToken);
+    return handleApplicationCommand(interaction, options.stores, options.discordBotToken);
   }
 
   if (interaction?.type === 3) {
     return handleMessageComponentInteraction(
       interaction,
-      options.store,
+      options.stores,
       options.discordBotToken,
       new URL(request.url).origin,
       options.ticketTranscriptBlobs
@@ -53,7 +53,7 @@ export async function handleInteractionRequest(
   }
 
   if (interaction?.type === 5) {
-    return handleTicketModalSubmitInteraction(interaction, options.store, options.discordBotToken);
+    return handleTicketModalSubmitInteraction(interaction, options.stores, options.discordBotToken);
   }
 
   return Response.json(buildEphemeralMessage("Unsupported interaction type."));

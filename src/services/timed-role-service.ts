@@ -1,4 +1,4 @@
-import type { RuntimeStore } from "../runtime/contracts";
+import type { TimedRoleStore } from "../runtime/contracts";
 import type { TimedRoleAssignment } from "../types";
 
 export interface TimedRoleKey {
@@ -9,7 +9,7 @@ export interface TimedRoleKey {
 
 export class TimedRoleService {
   constructor(
-    private readonly store: RuntimeStore,
+    private readonly store: TimedRoleStore,
     _botToken: string,
     private readonly addRoleToMember?: (guildId: string, userId: string, roleId: string) => Promise<void>,
     private readonly removeRoleFromMember?: (guildId: string, userId: string, roleId: string) => Promise<void>

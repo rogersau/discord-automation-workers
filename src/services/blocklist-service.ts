@@ -1,4 +1,4 @@
-import type { RuntimeStore } from "../runtime/contracts";
+import type { BlocklistStore } from "../runtime/contracts";
 
 export interface BlocklistMutation {
   guildId: string;
@@ -7,7 +7,7 @@ export interface BlocklistMutation {
 }
 
 export class BlocklistService {
-  constructor(private readonly store: RuntimeStore) {}
+  constructor(private readonly store: BlocklistStore) {}
 
   async applyMutation(mutation: BlocklistMutation): Promise<void> {
     await this.store.applyGuildEmojiMutation(mutation);

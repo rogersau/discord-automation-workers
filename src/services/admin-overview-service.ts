@@ -1,4 +1,4 @@
-import type { RuntimeStore, GatewayController } from "../runtime/contracts";
+import type { BlocklistStore, TimedRoleStore, GatewayController } from "../runtime/contracts";
 import type { BlocklistConfig, TimedRoleAssignment } from "../types";
 import type { AdminPermissionCheck } from "../runtime/admin-types";
 
@@ -16,7 +16,8 @@ export interface AdminOverviewData {
 
 export class AdminOverviewService {
   constructor(
-    private readonly store: RuntimeStore,
+    private readonly blocklistStore: BlocklistStore,
+    private readonly timedRoleStore: TimedRoleStore,
     private readonly gateway: GatewayController,
     private readonly buildOverviewGuilds: (
       config: BlocklistConfig,
@@ -27,8 +28,8 @@ export class AdminOverviewService {
   async getOverview(): Promise<AdminOverviewData> {
     const [gateway, config, timedRoles] = await Promise.all([
       this.gateway.status(),
-      this.store.readConfig(),
-      this.store.listTimedRoles(),
+      this.blocklistStore.readConfig(),
+      this.timedRoleStore.listTimedRoles(),
     ]);
 
     return {

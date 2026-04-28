@@ -21,12 +21,44 @@ import {
 } from "../src/tickets";
 import type { TicketInstance, TicketPanelConfig, TimedRoleAssignment } from "../src/types";
 
+
+import type { RuntimeStores } from "../src/runtime/app-types";
+
+// Helper to convert old RuntimeStore mocks to new grouped RuntimeStores structure
+function createMockRuntimeStores(oldStore: any): RuntimeStores {
+  return {
+    blocklist: {
+      readConfig: oldStore.readConfig || (async () => ({ guilds: {}, botUserId: "bot-user-id" })),
+      applyGuildEmojiMutation: oldStore.applyGuildEmojiMutation || (async () => ({ guilds: {}, botUserId: "bot-user-id" })),
+    },
+    appConfig: {
+      upsertAppConfig: oldStore.upsertAppConfig || (async () => {}),
+    },
+    timedRoles: {
+      listTimedRoles: oldStore.listTimedRoles || (async () => []),
+      listTimedRolesByGuild: oldStore.listTimedRolesByGuild || (async () => []),
+      upsertTimedRole: oldStore.upsertTimedRole || (async () => {}),
+      deleteTimedRole: oldStore.deleteTimedRole || (async () => {}),
+      listExpiredTimedRoles: oldStore.listExpiredTimedRoles || (async () => []),
+    },
+    tickets: {
+      reserveNextTicketNumber: oldStore.reserveNextTicketNumber || (async () => 1),
+      readTicketPanelConfig: oldStore.readTicketPanelConfig || (async () => null),
+      upsertTicketPanelConfig: oldStore.upsertTicketPanelConfig || (async () => {}),
+      createTicketInstance: oldStore.createTicketInstance || (async () => {}),
+      deleteTicketInstance: oldStore.deleteTicketInstance || (async () => {}),
+      readOpenTicketByChannel: oldStore.readOpenTicketByChannel || (async () => null),
+      closeTicketInstance: oldStore.closeTicketInstance || (async () => {}),
+    },
+  };
+}
+
 test("createRuntimeApp serves the admin login shell and static assets", async () => {
   const app = createRuntimeApp({
     discordPublicKey: "a".repeat(64),
     discordBotToken: "bot-token",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -50,14 +82,14 @@ test("createRuntimeApp redirects unauthenticated admin requests and sets a sessi
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readConfig() {
         return { guilds: {}, botUserId: "bot-user-id" };
       },
       async upsertAppConfig(body: { key: string; value: string }) {
         configWrites.push(body);
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -86,12 +118,12 @@ test("createRuntimeApp rejects invalid admin login passwords", async () => {
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readConfig() {
         return { guilds: {}, botUserId: "bot-user-id" };
       },
       async upsertAppConfig() {},
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -114,11 +146,11 @@ test("createRuntimeApp rejects admin login when ADMIN_SESSION_SECRET is not conf
     adminUiPassword: "let-me-in",
     // adminSessionSecret deliberately not set - should reject login
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readConfig() {
         return { guilds: {}, botUserId: "bot-user-id" };
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -140,7 +172,7 @@ test("createRuntimeApp serves authenticated dashboard shells for nested admin pa
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -164,7 +196,7 @@ test("createRuntimeApp redirects unauthenticated nested admin pages to login", a
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -181,7 +213,7 @@ test("createRuntimeApp redirects successful admin login back to the requested da
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -210,7 +242,7 @@ test("createRuntimeApp handles health checks", async () => {
     discordPublicKey: "a".repeat(64),
     discordBotToken: "bot-token",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -224,7 +256,7 @@ test("createRuntimeApp handles Discord PING interactions", async () => {
     discordPublicKey: "a".repeat(64),
     discordBotToken: "bot-token",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -248,11 +280,11 @@ test("createRuntimeApp handles /blocklist list command with empty guild", async 
     discordPublicKey: "a".repeat(64),
     discordBotToken: "bot-token",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readConfig() {
         return { guilds: {}, botUserId: "bot-user-id" };
       },
-    } as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -287,7 +319,7 @@ test("createRuntimeApp respects enabled: false for /blocklist list", async () =>
     discordPublicKey: "a".repeat(64),
     discordBotToken: "bot-token",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readConfig() {
         return {
           guilds: {
@@ -299,7 +331,7 @@ test("createRuntimeApp respects enabled: false for /blocklist list", async () =>
           botUserId: "bot-user-id",
         };
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -336,7 +368,7 @@ test("createRuntimeApp returns 404 for legacy /admin/gateway/status endpoint", a
     discordBotToken: "bot-token",
     adminAuthSecret: "admin-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {
       async status() {
         calls.push("status");
@@ -372,7 +404,7 @@ test("createRuntimeApp returns dashboard data and blocklist mutations through se
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readConfig() {
         return { guilds: { "guild-1": { enabled: true, emojis: ["✅"] } }, botUserId: "bot-user-id" };
       },
@@ -383,7 +415,7 @@ test("createRuntimeApp returns dashboard data and blocklist mutations through se
         calls.push(`blocklist:${body.guildId}:${body.emoji}:${body.action}`);
         return { guilds: { [body.guildId]: { enabled: true, emojis: body.action === "add" ? ["✅", body.emoji] : ["✅"] } }, botUserId: "bot-user-id" };
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {
       async status() {
         return { status: "idle", sessionId: null, resumeGatewayUrl: null, lastSequence: null, backoffAttempt: 0, lastError: null, heartbeatIntervalMs: null };
@@ -519,7 +551,7 @@ test("createRuntimeApp exposes dashboard overview data for discoverability in th
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readConfig() {
           return {
             guilds: {
@@ -532,7 +564,7 @@ test("createRuntimeApp exposes dashboard overview data for discoverability in th
         async listTimedRoles() {
           return timedRoles;
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {
         async status() {
           return {
@@ -648,7 +680,7 @@ test("createRuntimeApp exposes the bot guild directory for the admin UI", async 
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {} as RuntimeStore,
+      stores: createMockRuntimeStores({} as RuntimeStore),
       gateway: {} as GatewayController,
     });
 
@@ -734,11 +766,11 @@ test("createRuntimeApp exposes live blocklist permission diagnostics through ses
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readConfig() {
           return { guilds: { "guild-1": { enabled: true, emojis: ["🚫"] } }, botUserId: "bot-user-id" };
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -796,7 +828,7 @@ test("createRuntimeApp exposes timed-role admin APIs through session auth", asyn
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
         },
@@ -817,7 +849,7 @@ test("createRuntimeApp exposes timed-role admin APIs through session auth", asyn
             assignments.splice(index, 1);
           }
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -886,14 +918,14 @@ test("createRuntimeApp rejects malformed POST /admin/api/timed-roles bodies with
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async upsertTimedRole() {
           calls.push("store:add");
         },
         async deleteTimedRole() {
           calls.push("store:remove");
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -934,7 +966,7 @@ test("createRuntimeApp returns 502 JSON when timed-role add fails at Discord", a
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async upsertTimedRole() {
           calls.push("store:add");
         },
@@ -944,7 +976,7 @@ test("createRuntimeApp returns 502 JSON when timed-role add fails at Discord", a
         async listTimedRolesByGuild() {
           return [];
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -989,14 +1021,14 @@ test("createRuntimeApp returns 502 JSON when timed-role remove fails at Discord"
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async deleteTimedRole() {
           calls.push("store:remove");
         },
         async listTimedRolesByGuild() {
           return [];
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -1033,11 +1065,11 @@ test("createRuntimeApp rejects malformed POST /admin/api/config bodies with 400 
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async upsertAppConfig() {
         calls.push("config");
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -1064,12 +1096,12 @@ test("createRuntimeApp rejects malformed POST /admin/api/blocklist bodies with 4
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async applyGuildEmojiMutation() {
         calls.push("blocklist");
         return { guilds: {}, botUserId: "bot-user-id" };
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -1095,7 +1127,7 @@ test("createRuntimeApp rejects null body on POST /admin/api/blocklist with 400 J
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as unknown as RuntimeStore,
+    stores: createMockRuntimeStores({} as unknown as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -1120,7 +1152,7 @@ test("createRuntimeApp rejects non-string emoji on POST /admin/api/blocklist wit
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as unknown as RuntimeStore,
+    stores: createMockRuntimeStores({} as unknown as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -1145,7 +1177,7 @@ test("createRuntimeApp rejects null body on POST /admin/api/timed-roles with 400
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as unknown as RuntimeStore,
+    stores: createMockRuntimeStores({} as unknown as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -1170,7 +1202,7 @@ test("createRuntimeApp rejects non-string duration on POST /admin/api/timed-role
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as unknown as RuntimeStore,
+    stores: createMockRuntimeStores({} as unknown as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -1201,7 +1233,7 @@ test("createRuntimeApp rejects unauthenticated /admin/api/* requests with 401 JS
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -1220,7 +1252,7 @@ test("createRuntimeApp serves admin shell with data-authenticated for authentica
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {} as RuntimeStore,
+    stores: createMockRuntimeStores({} as RuntimeStore),
     gateway: {} as GatewayController,
   });
 
@@ -1240,14 +1272,14 @@ test("createRuntimeApp GET /admin/api/config returns current config under sessio
     adminUiPassword: "let-me-in",
     adminSessionSecret: "session-secret",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readConfig() {
         return {
           guilds: { "guild-1": { enabled: true, emojis: ["✅"] } },
           botUserId: "bot-user-id",
         };
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -1310,14 +1342,14 @@ test("createRuntimeApp exposes ticket admin APIs through session auth and publis
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readTicketPanelConfig(guildId: string) {
           return storedPanel?.guildId === guildId ? storedPanel : null;
         },
         async upsertTicketPanelConfig(panel: TicketPanelConfig) {
           storedPanel = panel;
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -1541,14 +1573,14 @@ test("createRuntimeApp rejects ticket panel publish when referenced Discord targ
       adminUiPassword: "let-me-in",
       adminSessionSecret: "session-secret",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readTicketPanelConfig(guildId: string) {
           return storedPanel?.guildId === guildId ? storedPanel : null;
         },
         async upsertTicketPanelConfig(panel: TicketPanelConfig) {
           storedPanel = panel;
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -1726,7 +1758,7 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
           return transcriptMediaByKey.get(key) ?? null;
         },
       },
-      store: {
+      stores: createMockRuntimeStores({
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
         },
@@ -1753,7 +1785,7 @@ test("createRuntimeApp handles ticket open modal submit and close interactions",
           closeCalls.push(body);
           openTickets.delete(`${body.guildId}:${body.channelId}`);
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -2010,7 +2042,7 @@ test("createRuntimeApp creates a ticket immediately when the ticket type has no 
       discordPublicKey: "a".repeat(64),
       discordBotToken: "bot-token",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
         },
@@ -2023,7 +2055,7 @@ test("createRuntimeApp creates a ticket immediately when the ticket type has no 
         async createTicketInstance(instance: TicketInstance) {
           createdInstances.push(instance);
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -2149,7 +2181,7 @@ test("createRuntimeApp rolls back ticket creation when the opening message fails
       discordPublicKey: "a".repeat(64),
       discordBotToken: "bot-token",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
         },
@@ -2165,7 +2197,7 @@ test("createRuntimeApp rolls back ticket creation when the opening message fails
         async deleteTicketInstance(body: { guildId: string; channelId: string }) {
           deletedInstances.push(body);
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -2239,14 +2271,14 @@ test("createRuntimeApp lets support request ticket close approval from the opene
       discordPublicKey: "a".repeat(64),
       discordBotToken: "bot-token",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;
         },
         async readOpenTicketByChannel(guildId: string, channelId: string) {
           return guildId === "guild-1" && channelId === "ticket-channel-1" ? openTicket : null;
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -2359,7 +2391,7 @@ test("createRuntimeApp closes a ticket after the opener approves a close request
       discordPublicKey: "a".repeat(64),
       discordBotToken: "bot-token",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;
         },
@@ -2375,7 +2407,7 @@ test("createRuntimeApp closes a ticket after the opener approves a close request
         }) {
           closeCalls.push(body);
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -2429,11 +2461,11 @@ test("createRuntimeApp leaves a ticket open when the opener declines a close req
     discordPublicKey: "a".repeat(64),
     discordBotToken: "bot-token",
     verifyDiscordRequest: async () => true,
-    store: {
+    stores: createMockRuntimeStores({
       async readOpenTicketByChannel(guildId: string, channelId: string) {
         return guildId === "guild-1" && channelId === "ticket-channel-1" ? openTicket : null;
       },
-    } as unknown as RuntimeStore,
+    }),
     gateway: {} as GatewayController,
   });
 
@@ -2479,7 +2511,7 @@ test("createRuntimeApp returns an ephemeral failure when ticket channel creation
       discordPublicKey: "a".repeat(64),
       discordBotToken: "bot-token",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readConfig() {
           return { guilds: {}, botUserId: "bot-user-id" };
         },
@@ -2492,7 +2524,7 @@ test("createRuntimeApp returns an ephemeral failure when ticket channel creation
         async createTicketInstance() {
           createTicketInstanceCalls += 1;
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -2604,7 +2636,7 @@ test("createRuntimeApp keeps the ticket open and posts an in-channel error when 
       discordPublicKey: "a".repeat(64),
       discordBotToken: "bot-token",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;
         },
@@ -2620,7 +2652,7 @@ test("createRuntimeApp keeps the ticket open and posts an in-channel error when 
         }) {
           closeCalls.push(body);
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 
@@ -2713,7 +2745,7 @@ test("createRuntimeApp reports partial success when ticket close cleanup fails",
       discordPublicKey: "a".repeat(64),
       discordBotToken: "bot-token",
       verifyDiscordRequest: async () => true,
-      store: {
+      stores: createMockRuntimeStores({
         async readTicketPanelConfig(guildId: string) {
           return guildId === "guild-1" ? panel : null;
         },
@@ -2729,7 +2761,7 @@ test("createRuntimeApp reports partial success when ticket close cleanup fails",
         }) {
           closeCalls.push(body);
         },
-      } as unknown as RuntimeStore,
+      }),
       gateway: {} as GatewayController,
     });
 

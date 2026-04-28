@@ -6,7 +6,7 @@ import {
 } from "../discord";
 import { buildTicketOpenCustomId } from "../tickets";
 import type { TicketPanelConfig, TicketQuestion, TicketTypeConfig } from "../types";
-import type { RuntimeStore } from "./contracts";
+import type { RuntimeStores } from "./app-types";
 import {
   AdminApiInputError,
   asBoolean,
@@ -20,7 +20,7 @@ import {
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 
 export interface TicketPanelAdminOptions {
-  store: RuntimeStore;
+  stores: RuntimeStores;
   discordBotToken: string;
 }
 
@@ -36,7 +36,7 @@ export async function handleTicketPanelAdminRequest(
     }
 
     return Response.json({
-      panel: await options.store.readTicketPanelConfig(guildId),
+      panel: await options.stores.tickets.readTicketPanelConfig(guildId),
     });
   }
 
@@ -46,7 +46,7 @@ export async function handleTicketPanelAdminRequest(
       return parsedBody.response;
     }
 
-    await options.store.upsertTicketPanelConfig(parsedBody.value);
+    await options.stores.tickets.upsertTicketPanelConfig(parsedBody.value);
     return Response.json({ ok: true, panel: parsedBody.value });
   }
 
@@ -75,7 +75,7 @@ export async function handleTicketPanelAdminRequest(
       return parsedBody.response;
     }
 
-    const panel = await options.store.readTicketPanelConfig(parsedBody.value.guildId);
+    const panel = await options.stores.tickets.readTicketPanelConfig(parsedBody.value.guildId);
     if (!panel) {
       return Response.json({ error: "Ticket panel config not found." }, { status: 404 });
     }
@@ -105,7 +105,7 @@ export async function handleTicketPanelAdminRequest(
         { status: 502 }
       );
     }
-    await options.store.upsertTicketPanelConfig({
+    await options.stores.tickets.upsertTicketPanelConfig({
       ...panel,
       panelMessageId,
     });

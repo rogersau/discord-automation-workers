@@ -6,22 +6,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { TimedRoleService } from "../src/services/timed-role-service";
-import type { RuntimeStore } from "../src/runtime/contracts";
+import type { TimedRoleStore } from "../src/runtime/contracts";
 import type { TimedRoleAssignment } from "../src/types";
 
 test("TimedRoleService.assignTimedRole persists role and assigns via Discord", async () => {
   const upsertedRoles: TimedRoleAssignment[] = [];
   const assignedRoles: Array<{ guildId: string; userId: string; roleId: string }> = [];
 
-  const store: Partial<RuntimeStore> = {
+  const store: TimedRoleStore = {
     async upsertTimedRole(role: TimedRoleAssignment) {
       upsertedRoles.push(role);
     },
     async deleteTimedRole() {},
+    async listTimedRoles() {
+      return [];
+    },
+    async listTimedRolesByGuild() {
+      return [];
+    },
+    async listExpiredTimedRoles() {
+      return [];
+    },
   };
 
   const service = new TimedRoleService(
-    store as RuntimeStore,
+    store,
     "bot-token",
     async (guildId: string, userId: string, roleId: string) => {
       assignedRoles.push({ guildId, userId, roleId });
@@ -45,17 +54,26 @@ test("TimedRoleService.assignTimedRole rolls back database when Discord role ass
   const upsertedRoles: TimedRoleAssignment[] = [];
   const deletedRoles: Array<{ guildId: string; userId: string; roleId: string }> = [];
 
-  const store: Partial<RuntimeStore> = {
+  const store: TimedRoleStore = {
     async upsertTimedRole(role: TimedRoleAssignment) {
       upsertedRoles.push(role);
     },
     async deleteTimedRole(key: { guildId: string; userId: string; roleId: string }) {
       deletedRoles.push(key);
     },
+    async listTimedRoles() {
+      return [];
+    },
+    async listTimedRolesByGuild() {
+      return [];
+    },
+    async listExpiredTimedRoles() {
+      return [];
+    },
   };
 
   const service = new TimedRoleService(
-    store as RuntimeStore,
+    store,
     "bot-token",
     async () => {
       throw new Error("Discord API failed");
@@ -83,14 +101,24 @@ test("TimedRoleService.removeTimedRole removes from Discord then deletes from da
   const deletedRoles: Array<{ guildId: string; userId: string; roleId: string }> = [];
   const removedRoles: Array<{ guildId: string; userId: string; roleId: string }> = [];
 
-  const store: Partial<RuntimeStore> = {
+  const store: TimedRoleStore = {
     async deleteTimedRole(key: { guildId: string; userId: string; roleId: string }) {
       deletedRoles.push(key);
+    },
+    async upsertTimedRole() {},
+    async listTimedRoles() {
+      return [];
+    },
+    async listTimedRolesByGuild() {
+      return [];
+    },
+    async listExpiredTimedRoles() {
+      return [];
     },
   };
 
   const service = new TimedRoleService(
-    store as RuntimeStore,
+    store,
     "bot-token",
     undefined,
     async (guildId: string, userId: string, roleId: string) => {

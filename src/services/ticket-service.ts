@@ -1,5 +1,5 @@
 import { buildTicketChannelName } from "../tickets";
-import type { RuntimeStore } from "../runtime/contracts";
+import type { BlocklistStore, TicketStore } from "../runtime/contracts";
 import type { TicketPanelConfig, TicketTypeConfig, TicketInstance, TicketAnswer } from "../types";
 
 export interface CreateTicketChannelConfig {
@@ -21,15 +21,16 @@ export interface TicketServiceOptions {
 
 export class TicketService {
   constructor(
-    private readonly store: RuntimeStore,
+    private readonly blocklistStore: BlocklistStore,
+    private readonly ticketStore: TicketStore,
     _botToken: string,
     private readonly createChannel?: (config: CreateTicketChannelConfig) => Promise<{ id: string }>,
     private readonly deleteChannel?: (channelId: string) => Promise<void>
   ) {}
 
   async openTicket(options: TicketServiceOptions): Promise<TicketInstance> {
-    const config = await this.store.readConfig();
-    const ticketNumber = await this.store.reserveNextTicketNumber(options.guildId);
+    const config = await this.blocklistStore.readConfig();
+    const ticketNumber = await this.ticketStore.reserveNextTicketNumber(options.guildId);
 
     // Create Discord channel
     if (!this.createChannel) {
@@ -62,7 +63,7 @@ export class TicketService {
       transcriptMessageId: null,
     };
 
-    await this.store.createTicketInstance(instance);
+    await this.ticketStore.createTicketInstance(instance);
 
     return instance;
   }
@@ -74,7 +75,7 @@ export class TicketService {
     }
 
     // Close ticket in database
-    await this.store.closeTicketInstance({
+    await this.ticketStore.closeTicketInstance({
       guildId: options.guildId,
       channelId: options.channelId,
       closedByUserId: "system",

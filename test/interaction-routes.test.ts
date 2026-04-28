@@ -9,6 +9,38 @@ import worker from "../src/index";
 import { buildEphemeralMessage } from "../src/discord-interactions";
 import { formatTimedRoleExpiry } from "../src/timed-roles";
 
+
+import type { RuntimeStores } from "../src/runtime/app-types";
+
+// Helper to convert old RuntimeStore mocks to new grouped RuntimeStores structure
+function createMockRuntimeStores(oldStore: any): RuntimeStores {
+  return {
+    blocklist: {
+      readConfig: oldStore.readConfig || (async () => ({ guilds: {}, botUserId: "bot-user-id" })),
+      applyGuildEmojiMutation: oldStore.applyGuildEmojiMutation || (async () => ({ guilds: {}, botUserId: "bot-user-id" })),
+    },
+    appConfig: {
+      upsertAppConfig: oldStore.upsertAppConfig || (async () => {}),
+    },
+    timedRoles: {
+      listTimedRoles: oldStore.listTimedRoles || (async () => []),
+      listTimedRolesByGuild: oldStore.listTimedRolesByGuild || (async () => []),
+      upsertTimedRole: oldStore.upsertTimedRole || (async () => {}),
+      deleteTimedRole: oldStore.deleteTimedRole || (async () => {}),
+      listExpiredTimedRoles: oldStore.listExpiredTimedRoles || (async () => []),
+    },
+    tickets: {
+      reserveNextTicketNumber: oldStore.reserveNextTicketNumber || (async () => 1),
+      readTicketPanelConfig: oldStore.readTicketPanelConfig || (async () => null),
+      upsertTicketPanelConfig: oldStore.upsertTicketPanelConfig || (async () => {}),
+      createTicketInstance: oldStore.createTicketInstance || (async () => {}),
+      deleteTicketInstance: oldStore.deleteTicketInstance || (async () => {}),
+      readOpenTicketByChannel: oldStore.readOpenTicketByChannel || (async () => null),
+      closeTicketInstance: oldStore.closeTicketInstance || (async () => {}),
+    },
+  };
+}
+
 test("worker answers Discord PING interactions", async () => {
   const { publicKeyHex, request } = await createSignedInteractionRequest({ type: 1 });
 
@@ -1338,7 +1370,7 @@ test("createInteractionRoutes handles Discord PING interactions through route mo
     discordPublicKey: "a".repeat(64),
     discordBotToken: "bot-token",
     verifyDiscordRequest: async () => true,
-    store: {} as never,
+    stores: createMockRuntimeStores({} as any),
     gateway: {} as never,
     services: {
       timedRoleService: {} as never,

@@ -13,14 +13,14 @@ import {
   formatTimedRoleExpiry,
   parseTimedRoleDuration,
 } from "../timed-roles";
-import type { RuntimeStore } from "./contracts";
+import type { RuntimeStores } from "./app-types";
 import type { DiscordInteraction } from "./app-types";
 
 const DISCORD_MESSAGE_CONTENT_LIMIT = 2_000;
 
 export async function handleApplicationCommand(
   interaction: DiscordInteraction,
-  store: RuntimeStore,
+  stores: RuntimeStores,
   discordBotToken: string
 ): Promise<Response> {
   if (typeof interaction?.guild_id !== "string" || interaction.guild_id.length === 0) {
@@ -39,7 +39,7 @@ export async function handleApplicationCommand(
 
   if (invocation.commandName === "blocklist" && invocation.subcommandName === "list") {
     try {
-      const config = await store.readConfig();
+      const config = await stores.blocklist.readConfig();
       const guildConfig = config.guilds?.[interaction.guild_id];
       const effectiveEmojis = guildConfig?.enabled === false ? [] : guildConfig?.emojis ?? [];
       const content = formatBoundedBulletList(
@@ -55,7 +55,7 @@ export async function handleApplicationCommand(
   }
 
   if (invocation.commandName === "timedrole" && invocation.subcommandName === "list") {
-    const assignments = await store.listTimedRolesByGuild(interaction.guild_id);
+    const assignments = await stores.timedRoles.listTimedRolesByGuild(interaction.guild_id);
     const content =
       assignments.length === 0
         ? "No timed roles are active in this server."
@@ -73,7 +73,7 @@ export async function handleApplicationCommand(
     if (!parsedDuration) {
       return Response.json(buildEphemeralMessage("Invalid duration. Use values like 1h, 1w, or 1m."));
     }
-    await store.upsertTimedRole({
+    await stores.timedRoles.upsertTimedRole({
       guildId: interaction.guild_id,
       userId: invocation.userId,
       roleId: invocation.roleId,
@@ -91,7 +91,7 @@ export async function handleApplicationCommand(
     } catch (error) {
       console.error("Timed role assignment failed", error);
       try {
-        await store.deleteTimedRole({
+        await stores.timedRoles.deleteTimedRole({
           guildId: interaction.guild_id,
           userId: invocation.userId,
           roleId: invocation.roleId,
@@ -116,7 +116,7 @@ export async function handleApplicationCommand(
   }
 
   if (invocation.commandName === "timedrole" && invocation.subcommandName === "remove") {
-    const assignments = await store.listTimedRolesByGuild(interaction.guild_id);
+    const assignments = await stores.timedRoles.listTimedRolesByGuild(interaction.guild_id);
     const activeAssignment = assignments.find(
       (entry) => entry.userId === invocation.userId && entry.roleId === invocation.roleId
     );
@@ -140,7 +140,7 @@ export async function handleApplicationCommand(
       return Response.json(buildEphemeralMessage("Failed to remove the timed role."));
     }
 
-    await store.deleteTimedRole({
+    await stores.timedRoles.deleteTimedRole({
       guildId: interaction.guild_id,
       userId: invocation.userId,
       roleId: invocation.roleId,
@@ -157,7 +157,7 @@ export async function handleApplicationCommand(
     }
     let isAlreadyBlocked = false;
     try {
-      const config = await store.readConfig();
+      const config = await stores.blocklist.readConfig();
       isAlreadyBlocked =
         config.guilds?.[interaction.guild_id]?.emojis.includes(normalizedEmoji) ?? false;
     } catch (error) {
@@ -169,7 +169,7 @@ export async function handleApplicationCommand(
         buildEphemeralMessage(`${invocation.emoji} is already blocked in this server.`)
       );
     }
-    await store.applyGuildEmojiMutation({
+    await stores.blocklist.applyGuildEmojiMutation({
       guildId: interaction.guild_id,
       emoji: normalizedEmoji,
       action: "add",
@@ -186,7 +186,7 @@ export async function handleApplicationCommand(
     }
     let isBlocked = false;
     try {
-      const config = await store.readConfig();
+      const config = await stores.blocklist.readConfig();
       isBlocked =
         config.guilds?.[interaction.guild_id]?.emojis.includes(normalizedEmoji) ?? false;
     } catch (error) {
@@ -200,7 +200,7 @@ export async function handleApplicationCommand(
         )
       );
     }
-    await store.applyGuildEmojiMutation({
+    await stores.blocklist.applyGuildEmojiMutation({
       guildId: interaction.guild_id,
       emoji: normalizedEmoji,
       action: "remove",

@@ -33,21 +33,22 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
   });
 
   const timedRoleService = new TimedRoleService(
-    options.store,
+    options.stores.timedRoles,
     options.discordBotToken,
     (guildId, userId, roleId) => addGuildMemberRole(guildId, userId, roleId, options.discordBotToken),
     (guildId, userId, roleId) => removeGuildMemberRole(guildId, userId, roleId, options.discordBotToken)
   );
 
   const adminOverviewService = new AdminOverviewService(
-    options.store,
+    options.stores.blocklist,
+    options.stores.timedRoles,
     options.gateway,
     (config, timedRoles) => buildAdminOverviewGuilds(config, timedRoles, options.discordBotToken)
   );
 
-  const blocklistService = new BlocklistService(options.store);
+  const blocklistService = new BlocklistService(options.stores.blocklist);
   const handleAdminApiRequest = createAdminApiHandler({
-    store: options.store,
+    stores: options.stores,
     discordBotToken: options.discordBotToken,
   });
 
@@ -74,7 +75,7 @@ export function createRuntimeApp(options: RuntimeAppOptions) {
     discordPublicKey: options.discordPublicKey,
     discordBotToken: options.discordBotToken,
     verifyDiscordRequest: options.verifyDiscordRequest,
-    store: options.store,
+    stores: options.stores,
     gateway: options.gateway,
     ticketTranscriptBlobs: options.ticketTranscriptBlobs,
     services: {

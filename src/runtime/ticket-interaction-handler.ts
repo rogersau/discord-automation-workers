@@ -20,12 +20,13 @@ import {
 } from "../tickets";
 import type { TicketInstance, TicketPanelConfig, TicketTypeConfig } from "../types";
 import type { DiscordInteraction } from "./app-types";
-import type { RuntimeStore, TicketTranscriptBlobStore } from "./contracts";
+import type { RuntimeStores } from "./app-types";
+import type { TicketTranscriptBlobStore } from "./contracts";
 import { buildTicketTranscriptArtifacts } from "./ticket-transcript-collector";
 
 export async function handleMessageComponentInteraction(
   interaction: DiscordInteraction,
-  store: RuntimeStore,
+  stores: RuntimeStores,
   discordBotToken: string,
   requestOrigin: string,
   ticketTranscriptBlobs?: TicketTranscriptBlobStore
@@ -45,7 +46,7 @@ export async function handleMessageComponentInteraction(
   }
 
   if (parsedCustomId.action === "open") {
-    const panel = await store.readTicketPanelConfig(interaction.guild_id);
+    const panel = await stores.tickets.readTicketPanelConfig(interaction.guild_id);
     const ticketType = panel?.ticketTypes.find((entry) => entry.id === parsedCustomId.ticketTypeId);
     if (!panel || !ticketType) {
       return Response.json(buildEphemeralMessage("That ticket option is no longer available."));
@@ -63,7 +64,7 @@ export async function handleMessageComponentInteraction(
         panel,
         ticketType,
         answers: [],
-        store,
+        stores,
         discordBotToken,
       });
     }
@@ -77,7 +78,7 @@ export async function handleMessageComponentInteraction(
         interaction,
         interaction.guild_id,
         parsedCustomId.channelId,
-        store,
+        stores,
         discordBotToken
       );
     case "close-confirm":
@@ -85,7 +86,7 @@ export async function handleMessageComponentInteraction(
         interaction,
         interaction.guild_id,
         parsedCustomId.channelId,
-        store,
+        stores,
         discordBotToken,
         requestOrigin,
         ticketTranscriptBlobs
@@ -95,14 +96,14 @@ export async function handleMessageComponentInteraction(
         interaction,
         interaction.guild_id,
         parsedCustomId.channelId,
-        store
+        stores
       );
     case "close":
       return handleTicketCloseInteraction(
         interaction,
         interaction.guild_id,
         parsedCustomId.channelId,
-        store,
+        stores,
         discordBotToken,
         requestOrigin,
         ticketTranscriptBlobs
@@ -114,7 +115,7 @@ export async function handleMessageComponentInteraction(
 
 export async function handleTicketModalSubmitInteraction(
   interaction: DiscordInteraction,
-  store: RuntimeStore,
+  stores: RuntimeStores,
   discordBotToken: string
 ): Promise<Response> {
   if (typeof interaction.guild_id !== "string" || interaction.guild_id.length === 0) {
@@ -131,7 +132,7 @@ export async function handleTicketModalSubmitInteraction(
     return Response.json(buildEphemeralMessage("That ticket option is no longer available."));
   }
 
-  const panel = await store.readTicketPanelConfig(interaction.guild_id);
+  const panel = await stores.tickets.readTicketPanelConfig(interaction.guild_id);
   const ticketType = panel?.ticketTypes.find((entry) => entry.id === parsedCustomId.ticketTypeId);
   if (!panel || !ticketType) {
     return Response.json(buildEphemeralMessage("That ticket option is no longer available."));
@@ -146,7 +147,7 @@ export async function handleTicketModalSubmitInteraction(
       interaction as Parameters<typeof extractTicketAnswersFromModal>[0],
       ticketType.questions
     ),
-    store,
+    stores,
     discordBotToken,
   });
 }
@@ -157,7 +158,7 @@ async function createTicketFromInteraction({
   panel,
   ticketType,
   answers,
-  store,
+  stores,
   discordBotToken,
 }: {
   guildId: string;
@@ -165,14 +166,14 @@ async function createTicketFromInteraction({
   panel: TicketPanelConfig;
   ticketType: TicketTypeConfig;
   answers: TicketInstance["answers"];
-  store: RuntimeStore;
+  stores: RuntimeStores;
   discordBotToken: string;
 }): Promise<Response> {
-  const config = await store.readConfig();
+  const config = await stores.blocklist.readConfig();
   let ticketNumber: number;
 
   try {
-    ticketNumber = await store.reserveNextTicketNumber(guildId);
+    ticketNumber = await stores.tickets.reserveNextTicketNumber(guildId);
   } catch (error) {
     console.error("Failed to reserve ticket number", error);
     return Response.json(buildEphemeralMessage("Failed to create your ticket."));
@@ -213,7 +214,7 @@ async function createTicketFromInteraction({
 
   let persisted = false;
   try {
-    await store.createTicketInstance(instance);
+    await stores.tickets.createTicketInstance(instance);
     persisted = true;
     await createChannelMessage(
       channel.id,
@@ -224,7 +225,7 @@ async function createTicketFromInteraction({
     console.error("Failed to finish ticket creation", error);
     if (persisted) {
       try {
-        await store.deleteTicketInstance({
+        await stores.tickets.deleteTicketInstance({
           guildId,
           channelId: channel.id,
         });
@@ -247,7 +248,7 @@ async function handleTicketCloseInteraction(
   interaction: DiscordInteraction,
   guildId: string,
   requestedChannelId: string,
-  store: RuntimeStore,
+  stores: RuntimeStores,
   discordBotToken: string,
   requestOrigin: string,
   ticketTranscriptBlobs?: TicketTranscriptBlobStore
@@ -262,7 +263,7 @@ async function handleTicketCloseInteraction(
     return Response.json(buildEphemeralMessage("That ticket close button is no longer valid."));
   }
 
-  const ticket = await store.readOpenTicketByChannel(guildId, channelId);
+  const ticket = await stores.tickets.readOpenTicketByChannel(guildId, channelId);
   if (!ticket) {
     return Response.json(buildEphemeralMessage("This ticket is already closed or missing."));
   }
@@ -281,7 +282,7 @@ async function handleTicketCloseInteraction(
     ticket,
     closedByUserId: userId,
     closerDisplayName: getInteractionUserDisplayName(interaction),
-    store,
+    stores,
     discordBotToken,
     requestOrigin,
     ticketTranscriptBlobs,
@@ -292,7 +293,7 @@ async function handleTicketCloseRequestInteraction(
   interaction: DiscordInteraction,
   guildId: string,
   requestedChannelId: string,
-  store: RuntimeStore,
+  stores: RuntimeStores,
   discordBotToken: string
 ): Promise<Response> {
   const userId = getInteractionUserId(interaction);
@@ -305,7 +306,7 @@ async function handleTicketCloseRequestInteraction(
     return Response.json(buildEphemeralMessage("That ticket close request button is no longer valid."));
   }
 
-  const ticket = await store.readOpenTicketByChannel(guildId, channelId);
+  const ticket = await stores.tickets.readOpenTicketByChannel(guildId, channelId);
   if (!ticket) {
     return Response.json(buildEphemeralMessage("This ticket is already closed or missing."));
   }
@@ -343,7 +344,7 @@ async function handleTicketCloseConfirmationInteraction(
   interaction: DiscordInteraction,
   guildId: string,
   requestedChannelId: string,
-  store: RuntimeStore,
+  stores: RuntimeStores,
   discordBotToken: string,
   requestOrigin: string,
   ticketTranscriptBlobs?: TicketTranscriptBlobStore
@@ -358,7 +359,7 @@ async function handleTicketCloseConfirmationInteraction(
     return Response.json(buildEphemeralMessage("That ticket close request is no longer valid."));
   }
 
-  const ticket = await store.readOpenTicketByChannel(guildId, channelId);
+  const ticket = await stores.tickets.readOpenTicketByChannel(guildId, channelId);
   if (!ticket) {
     return Response.json(buildEphemeralMessage("This ticket is already closed or missing."));
   }
@@ -371,7 +372,7 @@ async function handleTicketCloseConfirmationInteraction(
     ticket,
     closedByUserId: userId,
     closerDisplayName: getInteractionUserDisplayName(interaction),
-    store,
+    stores,
     discordBotToken,
     requestOrigin,
     ticketTranscriptBlobs,
@@ -382,7 +383,7 @@ async function handleTicketCloseDeclineInteraction(
   interaction: DiscordInteraction,
   guildId: string,
   requestedChannelId: string,
-  store: RuntimeStore
+  stores: RuntimeStores
 ): Promise<Response> {
   const userId = getInteractionUserId(interaction);
   if (!userId) {
@@ -394,7 +395,7 @@ async function handleTicketCloseDeclineInteraction(
     return Response.json(buildEphemeralMessage("That ticket close request is no longer valid."));
   }
 
-  const ticket = await store.readOpenTicketByChannel(guildId, channelId);
+  const ticket = await stores.tickets.readOpenTicketByChannel(guildId, channelId);
   if (!ticket) {
     return Response.json(buildEphemeralMessage("This ticket is already closed or missing."));
   }
@@ -417,7 +418,7 @@ async function closeTicket({
   ticket,
   closedByUserId,
   closerDisplayName,
-  store,
+  stores,
   discordBotToken,
   requestOrigin,
   ticketTranscriptBlobs,
@@ -425,7 +426,7 @@ async function closeTicket({
   ticket: TicketInstance;
   closedByUserId: string;
   closerDisplayName: string | null;
-  store: RuntimeStore;
+  stores: RuntimeStores;
   discordBotToken: string;
   requestOrigin: string;
   ticketTranscriptBlobs?: TicketTranscriptBlobStore;
@@ -433,7 +434,7 @@ async function closeTicket({
   const guildId = ticket.guildId;
   const channelId = ticket.channelId;
 
-  const panel = await store.readTicketPanelConfig(guildId);
+  const panel = await stores.tickets.readTicketPanelConfig(guildId);
   if (!panel) {
     return Response.json(buildEphemeralMessage("This ticket panel configuration is missing."));
   }
@@ -497,7 +498,7 @@ async function closeTicket({
   }
 
   try {
-    await store.closeTicketInstance({
+    await stores.tickets.closeTicketInstance({
       guildId,
       channelId,
       closedByUserId,

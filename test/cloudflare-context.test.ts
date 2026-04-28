@@ -74,6 +74,32 @@ test("createCloudflareContext adminSessionSecret is undefined when no admin secr
   assert.strictEqual(context.adminSessionSecret, undefined);
 });
 
+test("createCloudflareContext exposes grouped stores by bounded context", () => {
+  const env = createMockEnv();
+  const context = createCloudflareContext(env);
+
+  assert.ok(context.stores, "context.stores should be defined");
+  assert.ok(context.stores.blocklist, "context.stores.blocklist should be defined");
+  assert.ok(context.stores.appConfig, "context.stores.appConfig should be defined");
+  assert.ok(context.stores.timedRoles, "context.stores.timedRoles should be defined");
+  assert.ok(context.stores.tickets, "context.stores.tickets should be defined");
+
+  assert.strictEqual(typeof context.stores.blocklist.readConfig, "function");
+  assert.strictEqual(typeof context.stores.blocklist.applyGuildEmojiMutation, "function");
+  assert.strictEqual(typeof context.stores.appConfig.upsertAppConfig, "function");
+  assert.strictEqual(typeof context.stores.timedRoles.listTimedRoles, "function");
+  assert.strictEqual(typeof context.stores.timedRoles.listTimedRolesByGuild, "function");
+  assert.strictEqual(typeof context.stores.timedRoles.upsertTimedRole, "function");
+  assert.strictEqual(typeof context.stores.timedRoles.deleteTimedRole, "function");
+  assert.strictEqual(typeof context.stores.tickets.reserveNextTicketNumber, "function");
+  assert.strictEqual(typeof context.stores.tickets.readTicketPanelConfig, "function");
+  assert.strictEqual(typeof context.stores.tickets.upsertTicketPanelConfig, "function");
+  assert.strictEqual(typeof context.stores.tickets.createTicketInstance, "function");
+  assert.strictEqual(typeof context.stores.tickets.deleteTicketInstance, "function");
+  assert.strictEqual(typeof context.stores.tickets.readOpenTicketByChannel, "function");
+  assert.strictEqual(typeof context.stores.tickets.closeTicketInstance, "function");
+});
+
 test("createCloudflareContext wires ticket transcript R2 helpers when a bucket is configured", async () => {
   const bucketCalls: Array<{ action: string; key: string; body?: unknown; contentType?: string }> = [];
   const env = createMockEnv({

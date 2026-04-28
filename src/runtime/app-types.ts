@@ -1,4 +1,11 @@
-import type { GatewayController, RuntimeStore, TicketTranscriptBlobStore } from "./contracts";
+import type { 
+  GatewayController,
+  TicketTranscriptBlobStore,
+  BlocklistStore,
+  AppConfigStore,
+  TimedRoleStore,
+  TicketStore,
+} from "./contracts";
 
 export interface DiscordInteraction {
   type: number;
@@ -21,6 +28,13 @@ export interface DiscordInteraction {
   data?: unknown;
 }
 
+export interface RuntimeStores {
+  blocklist: BlocklistStore;
+  appConfig: AppConfigStore;
+  timedRoles: TimedRoleStore;
+  tickets: TicketStore;
+}
+
 export interface RuntimeAppOptions {
   discordPublicKey: string;
   discordBotToken: string;
@@ -29,7 +43,7 @@ export interface RuntimeAppOptions {
   adminSessionSecret?: string;
   adminUiPassword?: string;
   verifyDiscordRequest?: (timestamp: string, body: string, signature: string) => Promise<boolean>;
-  store: RuntimeStore;
+  stores: RuntimeStores;
   gateway: GatewayController;
   ticketTranscriptBlobs?: TicketTranscriptBlobStore;
 }

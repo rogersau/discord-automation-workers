@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { TicketService, type CreateTicketChannelConfig } from "../src/services/ticket-service";
-import type { RuntimeStore } from "../src/runtime/contracts";
+import type { BlocklistStore, TicketStore } from "../src/runtime/contracts";
 import type { TicketPanelConfig, TicketInstance } from "../src/types";
 
 test("TicketService.openTicket creates channel and persists ticket instance", async () => {
@@ -17,16 +17,31 @@ test("TicketService.openTicket creates channel and persists ticket instance", as
     parentId: string;
   }> = [];
 
-  const store: Partial<RuntimeStore> = {
+  const blocklistStore: BlocklistStore = {
     async readConfig() {
       return { guilds: {}, botUserId: "bot-123" };
     },
+    async applyGuildEmojiMutation() {
+      return { guilds: {}, botUserId: "bot-123" };
+    },
+  };
+
+  const ticketStore: TicketStore = {
     async reserveNextTicketNumber() {
       return 1;
     },
     async createTicketInstance(instance: TicketInstance) {
       createdInstances.push(instance);
     },
+    async readTicketPanelConfig() {
+      return null;
+    },
+    async upsertTicketPanelConfig() {},
+    async deleteTicketInstance() {},
+    async readOpenTicketByChannel() {
+      return null;
+    },
+    async closeTicketInstance() {},
   };
 
   const panel: TicketPanelConfig = {
@@ -52,7 +67,8 @@ test("TicketService.openTicket creates channel and persists ticket instance", as
   };
 
   const service = new TicketService(
-    store as RuntimeStore,
+    blocklistStore,
+    ticketStore,
     "bot-token",
     async (config: CreateTicketChannelConfig) => {
       createdChannels.push({
@@ -84,7 +100,25 @@ test("TicketService.closeTicket deletes channel and closes ticket instance", asy
   const closedTickets: string[] = [];
   const deletedChannels: string[] = [];
 
-  const store: Partial<RuntimeStore> = {
+  const blocklistStore: BlocklistStore = {
+    async readConfig() {
+      return { guilds: {}, botUserId: "bot-123" };
+    },
+    async applyGuildEmojiMutation() {
+      return { guilds: {}, botUserId: "bot-123" };
+    },
+  };
+
+  const ticketStore: TicketStore = {
+    async reserveNextTicketNumber() {
+      return 1;
+    },
+    async createTicketInstance() {},
+    async readTicketPanelConfig() {
+      return null;
+    },
+    async upsertTicketPanelConfig() {},
+    async deleteTicketInstance() {},
     async readOpenTicketByChannel(guildId: string, channelId: string) {
       return {
         guildId,
@@ -113,7 +147,8 @@ test("TicketService.closeTicket deletes channel and closes ticket instance", asy
   };
 
   const service = new TicketService(
-    store as RuntimeStore,
+    blocklistStore,
+    ticketStore,
     "bot-token",
     undefined,
     async (channelId: string) => {

@@ -6,6 +6,11 @@ import type {
 } from "../types";
 import type { AppConfigMutation } from "./admin-types";
 
+export type { BlocklistStore } from "./contracts/blocklist-store";
+export type { AppConfigStore } from "./contracts/app-config-store";
+export type { TimedRoleStore } from "./contracts/timed-role-store";
+export type { TicketStore } from "./contracts/ticket-store";
+
 export interface GatewaySnapshot {
   status: "idle" | "connecting" | "ready" | "resuming" | "backoff";
   sessionId: string | null;

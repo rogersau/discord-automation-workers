@@ -18,7 +18,7 @@ import {
   isRecord,
   parseJsonBody,
 } from "./admin-api-validation";
-import type { RuntimeStore } from "./contracts";
+import type { RuntimeStores } from "./app-types";
 import { handleTicketPanelAdminRequest } from "./ticket-panel-admin";
 import type { BlocklistConfig, TimedRoleAssignment } from "../types";
 
@@ -30,7 +30,7 @@ interface AdminOverviewGuild {
 }
 
 export interface AdminApiHandlerOptions {
-  store: RuntimeStore;
+  stores: RuntimeStores;
   discordBotToken: string;
 }
 
@@ -58,7 +58,7 @@ export function createAdminApiHandler(options: AdminApiHandlerOptions) {
           await buildAdminPermissionResponse(
             guildId,
             featureParam,
-            options.store,
+            options.stores,
             options.discordBotToken
           )
         );
@@ -82,7 +82,7 @@ export function createAdminApiHandler(options: AdminApiHandlerOptions) {
     }
 
     if (request.method === "GET" && url.pathname === "/admin/api/config") {
-      const config = await options.store.readConfig();
+      const config = await options.stores.blocklist.readConfig();
       return Response.json({ botUserId: config.botUserId });
     }
 
@@ -92,7 +92,7 @@ export function createAdminApiHandler(options: AdminApiHandlerOptions) {
         return parsedBody.response;
       }
 
-      await options.store.upsertAppConfig(parsedBody.value);
+      await options.stores.appConfig.upsertAppConfig(parsedBody.value);
       return Response.json({ ok: true });
     }
 
@@ -168,10 +168,10 @@ export async function buildAdminOverviewGuilds(
 async function buildAdminPermissionResponse(
   guildId: string,
   feature: AdminPermissionFeature,
-  store: RuntimeStore,
+  stores: RuntimeStores,
   discordBotToken: string
 ): Promise<AdminPermissionCheckResponse> {
-  const config = await store.readConfig();
+  const config = await stores.blocklist.readConfig();
   const context = await loadGuildPermissionContext(guildId, config.botUserId, discordBotToken);
 
   if (feature === "blocklist") {
@@ -186,14 +186,14 @@ async function buildAdminPermissionResponse(
     return {
       guildId,
       feature,
-      checks: buildTimedRolePermissionChecks(context, await store.listTimedRolesByGuild(guildId)),
+      checks: buildTimedRolePermissionChecks(context, await stores.timedRoles.listTimedRolesByGuild(guildId)),
     };
   }
 
   return {
     guildId,
     feature,
-    checks: buildTicketPermissionChecks(context, await store.readTicketPanelConfig(guildId)),
+    checks: buildTicketPermissionChecks(context, await stores.tickets.readTicketPanelConfig(guildId)),
   };
 }
 
