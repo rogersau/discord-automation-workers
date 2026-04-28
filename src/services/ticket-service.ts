@@ -1,4 +1,3 @@
-import { buildTicketChannelName } from "../tickets";
 import type { BlocklistStore, TicketStore } from "../runtime/contracts";
 import type { TicketPanelConfig, TicketTypeConfig, TicketInstance, TicketAnswer } from "../types";
 
@@ -29,52 +28,33 @@ export class TicketService {
   ) {}
 
   async openTicket(options: TicketServiceOptions): Promise<TicketInstance> {
-    const config = await this.blocklistStore.readConfig();
-    const ticketNumber = await this.ticketStore.reserveNextTicketNumber(options.guildId);
-
-    // Create Discord channel
     if (!this.createChannel) {
       throw new Error("createChannel handler not configured");
     }
 
-    const channelName = buildTicketChannelName(options.ticketType.channelNamePrefix, ticketNumber);
-    const channel = await this.createChannel({
-      guildId: options.guildId,
-      name: channelName,
-      parentId: options.panel.categoryChannelId,
-      botUserId: config.botUserId,
-      openerUserId: options.openerUserId,
-      supportRoleId: options.ticketType.supportRoleId,
-    });
-
-    // Persist ticket instance
-    const instance: TicketInstance = {
-      guildId: options.guildId,
-      channelId: channel.id,
-      ticketTypeId: options.ticketType.id,
-      ticketTypeLabel: options.ticketType.label,
-      openerUserId: options.openerUserId,
-      supportRoleId: options.ticketType.supportRoleId,
-      status: "open",
-      answers: options.answers,
-      openedAtMs: Date.now(),
-      closedAtMs: null,
-      closedByUserId: null,
-      transcriptMessageId: null,
-    };
-
-    await this.ticketStore.createTicketInstance(instance);
-
-    return instance;
+    const { openTicket } = await import("./tickets/open-ticket");
+    return openTicket(
+      {
+        readConfig: () => this.blocklistStore.readConfig(),
+        reserveNextTicketNumber: (guildId: string) => this.ticketStore.reserveNextTicketNumber(guildId),
+        createTicketInstance: (instance: TicketInstance) => this.ticketStore.createTicketInstance(instance),
+        deleteTicketInstance: (body: { guildId: string; channelId: string }) =>
+          this.ticketStore.deleteTicketInstance(body),
+      },
+      {
+        createChannel: this.createChannel,
+        deleteChannel: this.deleteChannel ?? (async () => {}),
+        createOpeningMessage: async () => {},
+      },
+      options
+    );
   }
 
   async closeTicket(options: { guildId: string; channelId: string }): Promise<void> {
-    // Delete Discord channel
     if (this.deleteChannel) {
       await this.deleteChannel(options.channelId);
     }
 
-    // Close ticket in database
     await this.ticketStore.closeTicketInstance({
       guildId: options.guildId,
       channelId: options.channelId,

@@ -42,6 +42,7 @@ export async function handleInteractionRequest(
     return handleApplicationCommand(interaction, options.stores, options.discordBotToken);
   }
 
+  // Ticket button interactions (open, close, close-request, etc.)
   if (interaction?.type === 3) {
     return handleMessageComponentInteraction(
       interaction,
@@ -52,6 +53,7 @@ export async function handleInteractionRequest(
     );
   }
 
+  // Ticket modal submissions (ticket creation with questions)
   if (interaction?.type === 5) {
     return handleTicketModalSubmitInteraction(interaction, options.stores, options.discordBotToken);
   }

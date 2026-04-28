@@ -6,23 +6,25 @@ import {
 } from "../discord";
 import { buildEphemeralMessage } from "../discord-interactions";
 import {
-  buildTicketChannelName,
-  buildTicketCloseConfirmCustomId,
   buildTicketCloseCustomId,
-  buildTicketCloseDeclineCustomId,
   buildTicketCloseRequestCustomId,
   buildTicketModalResponse,
-  buildTicketTranscriptSummaryEmbed,
   extractTicketAnswersFromModal,
   formatTicketNumber,
   parseTicketCustomId,
-  renderTicketTranscript,
 } from "../tickets";
 import type { TicketInstance, TicketPanelConfig, TicketTypeConfig } from "../types";
 import type { DiscordInteraction } from "./app-types";
 import type { RuntimeStores } from "./app-types";
 import type { TicketTranscriptBlobStore } from "./contracts";
 import { buildTicketTranscriptArtifacts } from "./ticket-transcript-collector";
+import { openTicket } from "../services/tickets/open-ticket";
+import {
+  closeTicket as closeTicketWorkflow,
+  TranscriptUploadError,
+  ChannelDeletionError,
+} from "../services/tickets/close-ticket";
+import { requestTicketClose } from "../services/tickets/request-ticket-close";
 
 export async function handleMessageComponentInteraction(
   interaction: DiscordInteraction,
@@ -169,79 +171,54 @@ async function createTicketFromInteraction({
   stores: RuntimeStores;
   discordBotToken: string;
 }): Promise<Response> {
-  const config = await stores.blocklist.readConfig();
-  let ticketNumber: number;
-
   try {
-    ticketNumber = await stores.tickets.reserveNextTicketNumber(guildId);
-  } catch (error) {
-    console.error("Failed to reserve ticket number", error);
-    return Response.json(buildEphemeralMessage("Failed to create your ticket."));
-  }
-
-  let channel: Awaited<ReturnType<typeof createTicketChannel>>;
-  try {
-    channel = await createTicketChannel(
+    const instance = await openTicket(
+      {
+        readConfig: () => stores.blocklist.readConfig(),
+        reserveNextTicketNumber: (gId: string) => stores.tickets.reserveNextTicketNumber(gId),
+        createTicketInstance: (inst: TicketInstance) => stores.tickets.createTicketInstance(inst),
+        deleteTicketInstance: (body: { guildId: string; channelId: string }) =>
+          stores.tickets.deleteTicketInstance(body),
+      },
+      {
+        createChannel: async (config) => {
+          const channel = await createTicketChannel(config, discordBotToken);
+          return { id: channel.id };
+        },
+        deleteChannel: async (channelId: string) => {
+          await deleteChannel(channelId, discordBotToken);
+        },
+        createOpeningMessage: async (channelId: string, ticketNumber: number) => {
+          const inst: TicketInstance = {
+            guildId,
+            channelId,
+            ticketTypeId: ticketType.id,
+            ticketTypeLabel: ticketType.label,
+            openerUserId,
+            supportRoleId: ticketType.supportRoleId,
+            status: "open",
+            answers,
+            openedAtMs: Date.now(),
+            closedAtMs: null,
+            closedByUserId: null,
+            transcriptMessageId: null,
+          };
+          await createChannelMessage(channelId, buildTicketOpeningMessage(inst, ticketNumber), discordBotToken);
+        },
+      },
       {
         guildId,
-        name: buildTicketChannelName(ticketType.channelNamePrefix, ticketNumber),
-        parentId: panel.categoryChannelId,
-        botUserId: config.botUserId,
         openerUserId,
-        supportRoleId: ticketType.supportRoleId,
-      },
-      discordBotToken
-    );
-  } catch (error) {
-    console.error("Failed to create ticket channel", error);
-    return Response.json(buildEphemeralMessage("Failed to create your ticket."));
-  }
-
-  const instance: TicketInstance = {
-    guildId,
-    channelId: channel.id,
-    ticketTypeId: ticketType.id,
-    ticketTypeLabel: ticketType.label,
-    openerUserId,
-    supportRoleId: ticketType.supportRoleId,
-    status: "open",
-    answers,
-    openedAtMs: Date.now(),
-    closedAtMs: null,
-    closedByUserId: null,
-    transcriptMessageId: null,
-  };
-
-  let persisted = false;
-  try {
-    await stores.tickets.createTicketInstance(instance);
-    persisted = true;
-    await createChannelMessage(
-      channel.id,
-      buildTicketOpeningMessage(instance, ticketNumber),
-      discordBotToken
-    );
-  } catch (error) {
-    console.error("Failed to finish ticket creation", error);
-    if (persisted) {
-      try {
-        await stores.tickets.deleteTicketInstance({
-          guildId,
-          channelId: channel.id,
-        });
-      } catch (rollbackError) {
-        console.error("Failed to roll back ticket instance", rollbackError);
+        panel,
+        ticketType,
+        answers,
       }
-    }
-    try {
-      await deleteChannel(channel.id, discordBotToken);
-    } catch (deleteError) {
-      console.error("Failed to delete ticket channel after open failure", deleteError);
-    }
+    );
+    return Response.json(buildEphemeralMessage(`Created your ticket: <#${instance.channelId}>`));
+  } catch (error) {
+    console.error("Failed to create ticket", error);
     return Response.json(buildEphemeralMessage("Failed to create your ticket."));
   }
-
-  return Response.json(buildEphemeralMessage(`Created your ticket: <#${channel.id}>`));
 }
 
 async function handleTicketCloseInteraction(
@@ -327,10 +304,16 @@ async function handleTicketCloseRequestInteraction(
   }
 
   try {
-    await createChannelMessage(
-      channelId,
-      buildTicketCloseRequestMessage(ticket, userId),
-      discordBotToken
+    await requestTicketClose(
+      {
+        createChannelMessage: async (channelId, body) => {
+          await createChannelMessage(channelId, body, discordBotToken);
+        },
+      },
+      {
+        ticket,
+        requesterUserId: userId,
+      }
     );
   } catch (error) {
     console.error("Failed to post ticket close request", error);
@@ -431,97 +414,67 @@ async function closeTicket({
   requestOrigin: string;
   ticketTranscriptBlobs?: TicketTranscriptBlobStore;
 }): Promise<Response> {
-  const guildId = ticket.guildId;
-  const channelId = ticket.channelId;
-
-  const panel = await stores.tickets.readTicketPanelConfig(guildId);
+  const panel = await stores.tickets.readTicketPanelConfig(ticket.guildId);
   if (!panel) {
     return Response.json(buildEphemeralMessage("This ticket panel configuration is missing."));
   }
 
-  const closedAtMs = Date.now();
-  const closingTicket: TicketInstance = {
-    ...ticket,
-    status: "closed",
-    closedAtMs,
-    closedByUserId,
-  };
-  let transcriptMessageId: string;
   try {
-    const transcriptArtifacts = await buildTicketTranscriptArtifacts({
-      guildId,
-      channelId,
-      closingTicket,
-      closerDisplayName,
-      discordBotToken,
-      requestOrigin,
-      ticketTranscriptBlobs,
-    });
-    const transcript = renderTicketTranscript(closingTicket, transcriptArtifacts.messages);
-
-    const transcriptMessage = await uploadTranscriptToChannel(
-      panel.transcriptChannelId,
-      `ticket-${channelId}.txt`,
-      transcript,
-      discordBotToken,
+    await closeTicketWorkflow(
       {
-        htmlTranscriptUrl: transcriptArtifacts.htmlUrl,
-        embeds: [
-          buildTicketTranscriptSummaryEmbed(
-            closingTicket,
-            transcriptArtifacts.messages,
-            transcriptArtifacts.presentation
-          ),
-        ],
+        closeTicketInstance: (body) => stores.tickets.closeTicketInstance(body),
+      },
+      {
+        deleteChannel: async (channelId) => {
+          await deleteChannel(channelId, discordBotToken);
+        },
+        uploadTranscript: async (transcriptChannelId, filename, transcript, options) => {
+          return await uploadTranscriptToChannel(
+            transcriptChannelId,
+            filename,
+            transcript,
+            discordBotToken,
+            options
+          );
+        },
+        buildTranscriptArtifacts: async (options) => {
+          return await buildTicketTranscriptArtifacts({
+            ...options,
+            discordBotToken,
+            requestOrigin,
+          });
+        },
+        createChannelMessage: async (channelId, body) => {
+          await createChannelMessage(channelId, body, discordBotToken);
+        },
+      },
+      {
+        ticket,
+        closedByUserId,
+        closerDisplayName,
+        panel,
+        ticketTranscriptBlobs,
       }
     );
-    transcriptMessageId = transcriptMessage.id;
-  } catch (error) {
-    console.error("Failed to upload transcript", error);
-    try {
-      await createChannelMessage(
-        channelId,
-        {
-          content:
-            "Failed to upload the transcript for this ticket. The ticket will remain open so support staff can retry closing it.",
-        },
-        discordBotToken
-      );
-    } catch (warningError) {
-      console.error("Failed to post transcript warning", warningError);
-    }
-    return Response.json(
-      buildEphemeralMessage(
-        "Failed to upload the transcript. The ticket is still open, and a warning was posted in the channel."
-      )
-    );
-  }
-
-  try {
-    await stores.tickets.closeTicketInstance({
-      guildId,
-      channelId,
-      closedByUserId,
-      closedAtMs,
-      transcriptMessageId,
-    });
+    return Response.json(buildEphemeralMessage("Closed ticket and uploaded the transcript."));
   } catch (error) {
     console.error("Failed to close ticket", error);
+    if (error instanceof TranscriptUploadError) {
+      return Response.json(
+        buildEphemeralMessage(
+          "Failed to upload the transcript. The ticket is still open, and a warning was posted in the channel."
+        )
+      );
+    }
+    if (error instanceof ChannelDeletionError) {
+      return Response.json(
+        buildEphemeralMessage(
+          "Closed ticket and uploaded the transcript, but failed to delete the channel. Please clean it up manually."
+        )
+      );
+    }
     return Response.json(buildEphemeralMessage("Failed to close the ticket."));
   }
-
-  try {
-    await deleteChannel(channelId, discordBotToken);
-  } catch (error) {
-    console.error("Failed to delete closed ticket channel", error);
-    return Response.json(
-      buildEphemeralMessage(
-        "Closed ticket and uploaded the transcript, but failed to delete the channel. Please clean it up manually."
-      )
-    );
-  }
-
-  return Response.json(buildEphemeralMessage("Closed ticket and uploaded the transcript."));
 }
 
 function getInteractionCustomId(interaction: DiscordInteraction): string | null {
@@ -612,32 +565,6 @@ function buildTicketOpeningMessage(instance: TicketInstance, ticketNumber: numbe
       {
         type: 1,
         components: actionButtons,
-      },
-    ],
-  };
-}
-
-function buildTicketCloseRequestMessage(ticket: TicketInstance, requesterUserId: string) {
-  return {
-    content: `<@${ticket.openerUserId}> <@${requesterUserId}> requested to close this ticket. Do you want to close it now?`,
-    allowed_mentions: { users: [ticket.openerUserId] },
-    components: [
-      {
-        type: 1,
-        components: [
-          {
-            type: 2,
-            custom_id: buildTicketCloseConfirmCustomId(ticket.channelId),
-            label: "Yes, close ticket",
-            style: 4,
-          },
-          {
-            type: 2,
-            custom_id: buildTicketCloseDeclineCustomId(ticket.channelId),
-            label: "No, keep open",
-            style: 2,
-          },
-        ],
       },
     ],
   };

@@ -403,3 +403,63 @@ test("buildTicketTranscriptSummaryEmbed includes transcript overview and identif
   assert.equal(embed.fields?.find((field) => field.name === "Ticket Owner")?.value, "summertrain (1493598719340318791)");
   assert.equal(embed.fields?.find((field) => field.name === "Closed by")?.value, "Postal (staff-1)");
 });
+
+test("openTicket deletes the created channel when persistence fails", async () => {
+  const calls: string[] = [];
+  const { openTicket } = await import("../src/services/tickets/open-ticket");
+
+  await assert.rejects(
+    openTicket(
+      {
+        readConfig: async () => ({ botUserId: "bot", guilds: {} }),
+        reserveNextTicketNumber: async () => 1,
+        createTicketInstance: async () => {
+          throw new Error("persist failed");
+        },
+        deleteTicketInstance: async () => {
+          calls.push("delete-instance");
+        },
+      },
+      {
+        createChannel: async () => {
+          calls.push("create-channel");
+          return { id: "channel-1" };
+        },
+        deleteChannel: async () => {
+          calls.push("delete-channel");
+        },
+        createOpeningMessage: async () => {
+          calls.push("opening-message");
+        },
+      },
+      {
+        guildId: "guild-1",
+        openerUserId: "user-1",
+        panel: {
+          guildId: "guild-1",
+          panelChannelId: "panel",
+          categoryChannelId: "category",
+          transcriptChannelId: "transcripts",
+          panelTitle: null,
+          panelDescription: null,
+          panelFooter: null,
+          panelMessageId: null,
+          ticketTypes: [],
+        },
+        ticketType: {
+          id: "support",
+          label: "Support",
+          emoji: null,
+          buttonStyle: "primary",
+          supportRoleId: "role-1",
+          channelNamePrefix: "support",
+          questions: [],
+        },
+        answers: [],
+      }
+    ),
+    /persist failed/
+  );
+
+  assert.deepEqual(calls, ["create-channel", "delete-channel"]);
+});
