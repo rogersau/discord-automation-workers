@@ -4,10 +4,9 @@ import {
   buildIdentifyPayload,
   buildResumePayload,
   nextBackoffMillis,
-  shouldHandleDispatch,
 } from "../gateway";
 import { moderateReactionAdd } from "../reaction-moderation";
-import type { DiscordReaction } from "../types";
+import { handleGatewayDispatch } from "../services/gateway/handle-gateway-dispatch";
 
 const DEFAULT_GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
 
@@ -155,10 +154,9 @@ export class GatewaySessionDO implements DurableObject {
         return;
       }
 
-      if (shouldHandleDispatch({ op: payload.op, t: payload.t ?? null })) {
-        await moderateReactionAdd(payload.d as DiscordReaction | null, this.env);
-        return;
-      }
+      await handleGatewayDispatch(payload, (reaction) =>
+        moderateReactionAdd(reaction, this.env)
+      );
 
       if (payload.t === "READY" && isReadyPayload(payload.d)) {
         this.snapshot.sessionId = payload.d.session_id;

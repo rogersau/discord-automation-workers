@@ -11,6 +11,7 @@ import {
   buildResumePayload,
 } from "../src/gateway";
 import { GatewaySessionDO } from "../src/durable-objects/gateway-session";
+import { handleGatewayDispatch } from "../src/services/gateway/handle-gateway-dispatch";
 
 test("GatewaySessionDO reports idle status before startup", async () => {
   const { state } = createGatewayState();
@@ -762,3 +763,23 @@ function mockDateNow(now: number) {
     },
   };
 }
+
+test("handleGatewayDispatch moderates MESSAGE_REACTION_ADD events and ignores unrelated dispatches", async () => {
+  const calls: string[] = [];
+
+  await handleGatewayDispatch(
+    { op: 0, t: "MESSAGE_REACTION_ADD", d: { message_id: "1" } },
+    async () => {
+      calls.push("moderate");
+    }
+  );
+
+  await handleGatewayDispatch(
+    { op: 0, t: "READY", d: {} },
+    async () => {
+      calls.push("unexpected");
+    }
+  );
+
+  assert.deepEqual(calls, ["moderate"]);
+});
