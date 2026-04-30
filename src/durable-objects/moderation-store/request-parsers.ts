@@ -110,6 +110,7 @@ export function parseTicketPanelConfig(body: unknown): TicketPanelConfig {
     panelChannelId: asRequiredString(body.panelChannelId, "panelChannelId"),
     categoryChannelId: asRequiredString(body.categoryChannelId, "categoryChannelId"),
     transcriptChannelId: asRequiredString(body.transcriptChannelId, "transcriptChannelId"),
+    panelEmoji: asOptionalNullableString(body.panelEmoji, "panelEmoji"),
     panelTitle: asOptionalNullableString(body.panelTitle, "panelTitle"),
     panelDescription: asOptionalNullableString(body.panelDescription, "panelDescription"),
     panelFooter: asOptionalNullableString(body.panelFooter, "panelFooter"),

@@ -440,6 +440,7 @@ test("openTicket deletes the created channel when persistence fails", async () =
           panelChannelId: "panel",
           categoryChannelId: "category",
           transcriptChannelId: "transcripts",
+          panelEmoji: null,
           panelTitle: null,
           panelDescription: null,
           panelFooter: null,

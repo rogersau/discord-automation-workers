@@ -72,6 +72,7 @@ function TicketPanelsEditor({
             panelChannelId: "",
             categoryChannelId: "",
             transcriptChannelId: "",
+            panelEmoji: null,
             panelTitle: null,
             panelDescription: null,
             panelFooter: null,

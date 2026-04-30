@@ -52,6 +52,7 @@ export function readTicketPanelConfig(
     panelChannelId: row.panel_channel_id as string,
     categoryChannelId: row.category_channel_id as string,
     transcriptChannelId: row.transcript_channel_id as string,
+    panelEmoji: storedPanel.panelEmoji,
     panelTitle: storedPanel.panelTitle,
     panelDescription: storedPanel.panelDescription,
     panelFooter: storedPanel.panelFooter,

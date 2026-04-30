@@ -1505,7 +1505,7 @@ test("createRuntimeApp exposes ticket admin APIs through session auth and publis
       embeds: [
         {
           color: 5763719,
-          title: "Support tickets",
+          title: "🎫 Support tickets",
           description: "Use the button below to open a ticket.",
           footer: {
             text: "TicketTool.xyz - Ticketing without clutter",
@@ -2820,6 +2820,7 @@ function createTicketPanelConfig(): TicketPanelConfig {
     panelChannelId: "panel-channel",
     categoryChannelId: "category-1",
     transcriptChannelId: "transcript-channel",
+    panelEmoji: "🎫",
     panelTitle: "Support tickets",
     panelDescription: "Use the button below to open a ticket.",
     panelFooter: "TicketTool.xyz - Ticketing without clutter",

@@ -85,6 +85,7 @@ export interface TicketPanelConfig {
   panelChannelId: string;
   categoryChannelId: string;
   transcriptChannelId: string;
+  panelEmoji: string | null;
   panelTitle: string | null;
   panelDescription: string | null;
   panelFooter: string | null;

@@ -146,6 +146,7 @@ function parseTicketPanelConfig(body: unknown): TicketPanelConfig {
     panelChannelId: asRequiredString(body.panelChannelId, "panelChannelId"),
     categoryChannelId: asRequiredString(body.categoryChannelId, "categoryChannelId"),
     transcriptChannelId: asRequiredString(body.transcriptChannelId, "transcriptChannelId"),
+    panelEmoji: asOptionalNullableString(body.panelEmoji, "panelEmoji"),
     panelTitle: asOptionalNullableString(body.panelTitle, "panelTitle"),
     panelDescription: asOptionalNullableString(body.panelDescription, "panelDescription"),
     panelFooter: asOptionalNullableString(body.panelFooter, "panelFooter"),
@@ -285,16 +286,32 @@ function buildTicketPanelMessage(panel: TicketPanelConfig) {
 }
 
 function buildTicketPanelEmbed(panel: TicketPanelConfig) {
-  if (!panel.panelTitle && !panel.panelDescription && !panel.panelFooter) {
+  if (!panel.panelEmoji && !panel.panelTitle && !panel.panelDescription && !panel.panelFooter) {
     return null;
   }
 
   return {
     color: 0x57f287,
-    ...(panel.panelTitle ? { title: panel.panelTitle } : {}),
+    ...(panel.panelTitle || panel.panelEmoji
+      ? { title: formatTicketPanelEmbedTitle(panel.panelEmoji, panel.panelTitle) }
+      : {}),
     ...(panel.panelDescription ? { description: panel.panelDescription } : {}),
     ...(panel.panelFooter ? { footer: { text: panel.panelFooter } } : {}),
   };
+}
+
+function formatTicketPanelEmbedTitle(
+  panelEmoji: string | null,
+  panelTitle: string | null
+): string {
+  const emoji = panelEmoji?.trim();
+  const title = panelTitle?.trim();
+
+  if (emoji && title) {
+    return `${emoji} ${title}`;
+  }
+
+  return emoji || title || "Tickets";
 }
 
 function chunkTicketTypeButtons(ticketTypes: TicketTypeConfig[]): TicketTypeConfig[][] {

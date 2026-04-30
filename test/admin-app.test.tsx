@@ -380,6 +380,7 @@ test("ticket panel editor shows friendly Discord names instead of raw IDs", () =
         panelChannelId: "panel-channel-1",
         categoryChannelId: "category-1",
         transcriptChannelId: "transcript-1",
+        panelEmoji: null,
         panelTitle: null,
         panelDescription: null,
         panelFooter: null,
@@ -411,6 +412,7 @@ test("ticket panel editor renders controls for editing ticket types and modal qu
         panelChannelId: "panel-channel-1",
         categoryChannelId: "category-1",
         transcriptChannelId: "transcript-1",
+        panelEmoji: "🎫",
         panelTitle: "COLD AS F**K tickets",
         panelDescription: "To create a ticket use the Create ticket button",
         panelFooter: "TicketTool.xyz - Ticketing without clutter",
@@ -446,6 +448,7 @@ test("ticket panel editor renders controls for editing ticket types and modal qu
   assert.match(html, /<details class="group rounded-md border bg-background" open="">/);
   assert.match(html, /Add question/);
   assert.match(html, /Panel title/);
+  assert.match(html, /Embed emoji/);
   assert.match(html, /Panel description/);
   assert.match(html, /Panel footer/);
   assert.match(html, /COLD AS F\*\*K tickets/);

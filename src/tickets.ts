@@ -65,6 +65,7 @@ export interface TicketTranscriptPresentationOptions {
 
 interface StoredTicketPanelPayload {
   ticketTypes: TicketTypeConfig[];
+  panelEmoji?: string | null;
   panelTitle?: string | null;
   panelDescription?: string | null;
   panelFooter?: string | null;
@@ -77,6 +78,7 @@ export function buildTicketOpenCustomId(ticketTypeId: string): string {
 export function serializeTicketPanelStorage(panel: TicketPanelConfig): string {
   return JSON.stringify({
     ticketTypes: panel.ticketTypes,
+    panelEmoji: panel.panelEmoji,
     panelTitle: panel.panelTitle,
     panelDescription: panel.panelDescription,
     panelFooter: panel.panelFooter,
@@ -85,12 +87,13 @@ export function serializeTicketPanelStorage(panel: TicketPanelConfig): string {
 
 export function parseTicketPanelStorage(
   payload: string
-): Pick<TicketPanelConfig, "ticketTypes" | "panelTitle" | "panelDescription" | "panelFooter"> {
+): Pick<TicketPanelConfig, "ticketTypes" | "panelEmoji" | "panelTitle" | "panelDescription" | "panelFooter"> {
   const parsed = JSON.parse(payload) as unknown;
 
   if (Array.isArray(parsed)) {
     return {
       ticketTypes: parsed as TicketTypeConfig[],
+      panelEmoji: null,
       panelTitle: null,
       panelDescription: null,
       panelFooter: null,
@@ -100,6 +103,7 @@ export function parseTicketPanelStorage(
   if (isRecord(parsed) && Array.isArray(parsed.ticketTypes)) {
     return {
       ticketTypes: parsed.ticketTypes as TicketTypeConfig[],
+      panelEmoji: asStoredNullableString(parsed.panelEmoji),
       panelTitle: asStoredNullableString(parsed.panelTitle),
       panelDescription: asStoredNullableString(parsed.panelDescription),
       panelFooter: asStoredNullableString(parsed.panelFooter),

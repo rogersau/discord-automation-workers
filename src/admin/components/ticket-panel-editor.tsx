@@ -254,7 +254,23 @@ export function TicketPanelEditor({
           )}
         </div>
 
-        <div className="min-w-0 space-y-2 md:col-span-3">
+        <div className="min-w-0 space-y-2">
+          <Label className="text-xs" htmlFor="tp-panel-emoji">Embed emoji</Label>
+          <Input
+            id="tp-panel-emoji"
+            className="h-9"
+            value={value.panelEmoji ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...value,
+                panelEmoji: e.target.value.trim().length > 0 ? e.target.value : null,
+              })
+            }
+            placeholder="🎫"
+          />
+        </div>
+
+        <div className="min-w-0 space-y-2 md:col-span-2">
           <Label className="text-xs" htmlFor="tp-panel-title">Panel title</Label>
           <Input
             id="tp-panel-title"
