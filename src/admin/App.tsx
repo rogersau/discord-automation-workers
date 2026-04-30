@@ -49,7 +49,9 @@ export default function App({
   initialSearch = "",
 }: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
-  const currentPath = normalizeAdminDashboardPath(initialPath);
+  const [currentPath, setCurrentPath] = useState(() =>
+    normalizeAdminDashboardPath(initialPath)
+  );
   const pageDataPolicy = getDashboardPageDataPolicy(currentPath);
   const [selectedGuildId, setSelectedGuildId] = useState(() =>
     getSelectedGuildIdFromSearch(initialSearch)
@@ -64,6 +66,20 @@ export default function App({
     useState<AdminGuildDirectoryEntry[] | null>(null);
   const [guildLookupError, setGuildLookupError] = useState<string | null>(null);
   const gatewayMonitorRef = useRef<GatewayStatusMonitor | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handlePopState() {
+      setCurrentPath(normalizeAdminDashboardPath(window.location.pathname));
+      setSelectedGuildId(getSelectedGuildIdFromSearch(window.location.search));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const loadOverview = useCallback(async (refreshDiscordCache = false) => {
     try {
@@ -245,6 +261,18 @@ export default function App({
     }
   }, []);
 
+  const handleDashboardNavigation = useCallback((nextPath: string) => {
+    const normalizedPath = normalizeAdminDashboardPath(nextPath);
+    setCurrentPath(normalizedPath);
+
+    if (typeof window !== "undefined") {
+      const nextHref = buildAdminDashboardHref(normalizedPath, selectedGuildId);
+      if (`${window.location.pathname}${window.location.search}` !== nextHref) {
+        window.history.pushState(null, "", nextHref);
+      }
+    }
+  }, [selectedGuildId]);
+
   if (authenticated) {
     const guildNamesById = new Map(
       (guildDirectory ?? []).map((guild) => [guild.guildId, guild.name] as const)
@@ -258,6 +286,7 @@ export default function App({
         selectedGuildId={selectedGuildId}
         onSelectedGuildChange={handleSelectedGuildChange}
         buildNavigationHref={(path) => buildAdminDashboardHref(path, selectedGuildId)}
+        onNavigate={handleDashboardNavigation}
       >
         {currentPath === "/admin" ? (
           <AdminOverviewPage

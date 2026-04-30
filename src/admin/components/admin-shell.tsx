@@ -16,6 +16,7 @@ export function AdminShell({
   selectedGuildId,
   onSelectedGuildChange,
   buildNavigationHref,
+  onNavigate,
   children,
 }: {
   currentPath: AdminDashboardPath;
@@ -24,6 +25,7 @@ export function AdminShell({
   selectedGuildId: string;
   onSelectedGuildChange: (nextGuildId: string) => void;
   buildNavigationHref: (path: AdminDashboardPath) => string;
+  onNavigate: (path: AdminDashboardPath) => void;
   children: ReactNode;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -98,6 +100,21 @@ export function AdminShell({
                   key={route.path}
                   href={buildNavigationHref(route.path)}
                   aria-current={active ? "page" : undefined}
+                  onClick={(event) => {
+                    if (
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
+
+                    event.preventDefault();
+                    onNavigate(route.path);
+                    setMobileNavOpen(false);
+                  }}
                   className={cn(
                     "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
                     active

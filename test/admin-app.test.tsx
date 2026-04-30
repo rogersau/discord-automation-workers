@@ -442,6 +442,8 @@ test("ticket panel editor renders controls for editing ticket types and modal qu
   );
 
   assert.match(html, /Add ticket type/);
+  assert.match(html, /Collapse all/);
+  assert.match(html, /<details class="group rounded-md border bg-background" open="">/);
   assert.match(html, /Add question/);
   assert.match(html, /Panel title/);
   assert.match(html, /Panel description/);
