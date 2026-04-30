@@ -1,8 +1,9 @@
 import { AdminPageHeader } from "./admin-page-header";
 import { Alert, AlertDescription } from "./ui/alert";
+import { Badge, StatusDot } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
-import { cn } from "../lib/utils";
+import { PlayIcon, RefreshIcon } from "./ui/icons";
 
 interface GatewayStatus {
   status: string;
@@ -34,8 +35,12 @@ export function AdminGatewayPage({
       <Card>
         <CardContent className="space-y-5 pt-6">
           <div className="flex flex-wrap gap-3">
-            <Button onClick={() => void onStartGateway()}>Start gateway</Button>
-            <Button variant="outline" onClick={() => void onRefresh()}>
+            <Button className="gap-2" onClick={() => void onStartGateway()}>
+              <PlayIcon className="h-4 w-4" />
+              Start gateway
+            </Button>
+            <Button className="gap-2" variant="outline" onClick={() => void onRefresh()}>
+              <RefreshIcon className="h-4 w-4" />
               Refresh dashboard
             </Button>
           </div>
@@ -48,7 +53,9 @@ export function AdminGatewayPage({
             <GatewayDetails status={gatewayStatus} />
           ) : (
             <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5">
-              <p className="text-xs font-medium text-muted-foreground">Current state</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Current state
+              </p>
               <p className="mt-2 text-sm text-muted-foreground">Loading gateway status...</p>
             </div>
           )}
@@ -59,6 +66,7 @@ export function AdminGatewayPage({
 }
 
 function GatewayDetails({ status }: { status: GatewayStatus }) {
+  const tone = getStatusTone(status.status);
   const details = [
     ["Session ID", status.sessionId ?? "Not established"],
     ["Last sequence", status.lastSequence ?? "None"],
@@ -71,8 +79,13 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3">
-        <span className="text-xs font-medium text-muted-foreground">Current state</span>
-        <StatusBadge status={status.status} />
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Current state
+        </span>
+        <Badge variant={tone === "default" ? "default" : tone}>
+          <StatusDot variant={tone === "default" ? "default" : tone} pulse={tone === "success"} />
+          {status.status}
+        </Badge>
         <p className="text-sm text-muted-foreground">
           {status.lastError
             ? "The gateway reported an error. Review the details below."
@@ -81,9 +94,14 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
       </div>
       <dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {details.map(([label, value]) => (
-          <div key={label} className="rounded-lg border bg-background p-4">
-            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-            <dd className="mt-2 text-sm font-medium text-foreground">{value}</dd>
+          <div
+            key={label}
+            className="rounded-lg border bg-background p-4 transition-colors hover:border-border/80"
+          >
+            <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {label}
+            </dt>
+            <dd className="mt-2 break-words text-sm font-medium text-foreground">{value}</dd>
           </div>
         ))}
       </dl>
@@ -91,45 +109,22 @@ function GatewayDetails({ status }: { status: GatewayStatus }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const tone = getStatusTone(status);
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium",
-        tone === "success" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
-        tone === "warning" && "border-amber-500/30 bg-amber-500/10 text-amber-100",
-        tone === "danger" && "border-destructive/40 bg-destructive/10 text-destructive-foreground",
-        tone === "neutral" && "border-border bg-muted/40 text-foreground"
-      )}
-    >
-      {status}
-    </span>
-  );
-}
-
-type StatusTone = "success" | "warning" | "danger" | "neutral";
+type StatusTone = "success" | "warning" | "danger" | "default";
 
 function getStatusTone(status: string | null): StatusTone {
-  if (!status) {
-    return "neutral";
-  }
+  if (!status) return "default";
 
   const normalized = status.toLowerCase();
   if (normalized.includes("ready") || normalized.includes("connected") || normalized.includes("active")) {
     return "success";
   }
-
   if (normalized.includes("error") || normalized.includes("fail") || normalized.includes("closed")) {
     return "danger";
   }
-
   if (normalized.includes("backoff") || normalized.includes("start") || normalized.includes("connect")) {
     return "warning";
   }
-
-  return "neutral";
+  return "default";
 }
 
 function formatHeartbeatInterval(intervalMs: number | null): string {
