@@ -24,6 +24,12 @@ interface TimedRoleAssignment {
   expiresAtMs: number;
 }
 
+interface NewMemberRoleConfig {
+  guildId: string;
+  roleId: string | null;
+  durationInput: string | null;
+}
+
 export function AdminTimedRolesPage({
   selectedGuildId,
 }: {
@@ -56,6 +62,8 @@ function TimedRolesEditor({
   const [duration, setDuration] = useState("1h");
   const [assignments, setAssignments] = useState<TimedRoleAssignment[] | null>(null);
   const [notificationChannelId, setNotificationChannelId] = useState("");
+  const [newMemberRoleId, setNewMemberRoleId] = useState("");
+  const [newMemberDuration, setNewMemberDuration] = useState("1w");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const trimmedGuildId = selectedGuildId.trim();
@@ -81,9 +89,12 @@ function TimedRolesEditor({
     const data = (await response.json()) as {
       assignments: TimedRoleAssignment[];
       notificationChannelId?: string | null;
+      newMemberRoleConfig?: NewMemberRoleConfig;
     };
     setAssignments(data.assignments);
     setNotificationChannelId(data.notificationChannelId ?? "");
+    setNewMemberRoleId(data.newMemberRoleConfig?.roleId ?? "");
+    setNewMemberDuration(data.newMemberRoleConfig?.durationInput ?? "1w");
   }
 
   async function handleSaveNotificationChannel() {
@@ -108,6 +119,39 @@ function TimedRolesEditor({
       notificationChannelId.trim()
         ? `Saved moderation log channel for ${selectedGuildId}.`
         : `Cleared moderation log channel for ${selectedGuildId}.`
+    );
+  }
+
+  async function handleSaveNewMemberConfig(nextRoleId = newMemberRoleId) {
+    setMessage(null);
+    setError(null);
+
+    const trimmedRoleId = nextRoleId.trim();
+    const response = await fetch("/admin/api/timed-roles/new-member-config", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        guildId: selectedGuildId,
+        roleId: trimmedRoleId || null,
+        duration: trimmedRoleId ? newMemberDuration.trim() : null,
+      }),
+    });
+
+    const data = (await response.json()) as {
+      newMemberRoleConfig?: NewMemberRoleConfig;
+      error?: string;
+    };
+    if (!response.ok) {
+      setError(data.error ?? "Failed to save the new member timed role.");
+      return;
+    }
+
+    setNewMemberRoleId(data.newMemberRoleConfig?.roleId ?? "");
+    setNewMemberDuration(data.newMemberRoleConfig?.durationInput ?? "1w");
+    setMessage(
+      data.newMemberRoleConfig?.roleId
+        ? `New members will receive ${data.newMemberRoleConfig.roleId} for ${data.newMemberRoleConfig.durationInput}.`
+        : "New member timed role automation is disabled."
     );
   }
 
@@ -206,6 +250,56 @@ function TimedRolesEditor({
             onClick={() => void handleAdd()}
           >
             Add timed role
+          </Button>
+        </EditorActions>
+      </EditorPanel>
+
+      <EditorPanel>
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">New member temporary role</p>
+          <p className="text-xs text-muted-foreground">
+            Give members a role when they join, then remove it automatically after the duration.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField label="Newbie role ID" htmlFor="tr-new-member-role">
+            <Input
+              id="tr-new-member-role"
+              placeholder="123456789012345678"
+              value={newMemberRoleId}
+              onChange={(event) => setNewMemberRoleId(event.target.value)}
+            />
+          </FormField>
+          <FormField label="Keep role for" htmlFor="tr-new-member-duration">
+            <Input
+              id="tr-new-member-duration"
+              placeholder="1h, 1w, or 1m"
+              value={newMemberDuration}
+              onChange={(event) => setNewMemberDuration(event.target.value)}
+            />
+          </FormField>
+        </div>
+        <EditorActions>
+          <Button
+            size="sm"
+            className="w-full sm:w-auto sm:min-w-[14rem]"
+            variant="outline"
+            disabled={!trimmedGuildId}
+            onClick={() => void handleSaveNewMemberConfig()}
+          >
+            Save new member role
+          </Button>
+          <Button
+            size="sm"
+            className="w-full sm:w-auto sm:min-w-[14rem]"
+            variant="ghost"
+            disabled={!trimmedGuildId}
+            onClick={() => {
+              setNewMemberRoleId("");
+              void handleSaveNewMemberConfig("");
+            }}
+          >
+            Disable new member role
           </Button>
         </EditorActions>
       </EditorPanel>

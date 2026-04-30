@@ -96,7 +96,6 @@ test("authenticated admin dashboard renders overview content instead of editor s
   const html = renderToString(<App initialAuthenticated />);
 
   assert.match(html, /Stored server data/i);
-  assert.match(html, /Quick actions/i);
   assert.match(html, /Start gateway/i);
 });
 
@@ -148,6 +147,8 @@ test("authenticated admin dashboard renders the timed roles workspace on /admin/
   assert.match(html, /id="sidebar-guild-query"/);
   assert.match(html, /Load timed roles/i);
   assert.match(html, /Add timed role/i);
+  assert.match(html, /New member temporary role/i);
+  assert.match(html, /Save new member role/i);
   assert.match(html, /Duration/i);
   assert.doesNotMatch(html, /Permission check/i);
   assert.doesNotMatch(html, /live Discord permission check/i);

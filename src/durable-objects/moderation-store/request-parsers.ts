@@ -1,4 +1,9 @@
-import type { TicketInstance, TicketPanelConfig, TimedRoleAssignment } from "../../types";
+import type {
+  NewMemberTimedRoleConfig,
+  TicketInstance,
+  TicketPanelConfig,
+  TimedRoleAssignment,
+} from "../../types";
 import { normalizeEmoji } from "../../blocklist";
 
 export class ModerationStoreInputError extends Error {}
@@ -80,6 +85,21 @@ export function parseTimedRoleRemoval(body: unknown): {
     guildId: asRequiredString(body.guildId, "guildId"),
     userId: asRequiredString(body.userId, "userId"),
     roleId: asRequiredString(body.roleId, "roleId"),
+  };
+}
+
+export function parseNewMemberTimedRoleConfig(body: unknown): NewMemberTimedRoleConfig {
+  if (!isRecord(body)) {
+    throw new ModerationStoreInputError("Invalid JSON body");
+  }
+
+  const roleId = asOptionalNullableString(body.roleId, "roleId");
+  const durationInput = asOptionalNullableString(body.durationInput, "durationInput");
+
+  return {
+    guildId: asRequiredString(body.guildId, "guildId"),
+    roleId,
+    durationInput: roleId && durationInput ? durationInput : null,
   };
 }
 

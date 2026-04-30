@@ -18,6 +18,7 @@ import {
   parseJsonBody,
   parseBlocklistMutationBody,
   parseGuildNotificationChannelBody,
+  parseNewMemberTimedRoleConfigBody,
   parseTimedRoleMutationBody,
 } from "../runtime/admin-api-validation";
 import { shouldRefreshAdminDiscordCache } from "../runtime/admin-discord-cache";
@@ -212,6 +213,48 @@ export function createAdminRoutes(options: AdminRouteOptions): RouteHandler {
           assignments: await options.services.timedRoleService.listTimedRoles(guildId),
           notificationChannelId:
             await options.services.blocklistService.getGuildNotificationChannel(guildId),
+          newMemberRoleConfig:
+            await options.services.timedRoleService.getNewMemberTimedRoleConfig(guildId),
+        });
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/admin/api/timed-roles/new-member-config"
+      ) {
+        const parsedBody = await parseJsonBody(request, parseNewMemberTimedRoleConfigBody);
+        if (!parsedBody.ok) {
+          return parsedBody.response;
+        }
+
+        if (parsedBody.value.roleId || parsedBody.value.duration) {
+          if (!parsedBody.value.roleId || !parsedBody.value.duration) {
+            return Response.json(
+              { error: "Role ID and duration are required to enable new member timed roles." },
+              { status: 400 }
+            );
+          }
+
+          const parsedDuration = parseTimedRoleDuration(parsedBody.value.duration, Date.now());
+          if (!parsedDuration) {
+            return Response.json(
+              { error: "Invalid duration. Use values like 1h, 1w, or 1m." },
+              { status: 400 }
+            );
+          }
+        }
+
+        await options.services.timedRoleService.updateNewMemberTimedRoleConfig({
+          guildId: parsedBody.value.guildId,
+          roleId: parsedBody.value.roleId,
+          durationInput: parsedBody.value.duration,
+        });
+
+        return Response.json({
+          newMemberRoleConfig:
+            await options.services.timedRoleService.getNewMemberTimedRoleConfig(
+              parsedBody.value.guildId
+            ),
         });
       }
 

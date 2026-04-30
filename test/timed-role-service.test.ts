@@ -8,7 +8,7 @@ import test from "node:test";
 import { TimedRoleService } from "../src/services/timed-role-service";
 import { assignTimedRole } from "../src/services/timed-roles/assign-timed-role";
 import type { TimedRoleStore } from "../src/runtime/contracts";
-import type { TimedRoleAssignment } from "../src/types";
+import type { NewMemberTimedRoleConfig, TimedRoleAssignment } from "../src/types";
 
 test("TimedRoleService.assignTimedRole persists role and assigns via Discord", async () => {
   const upsertedRoles: TimedRoleAssignment[] = [];
@@ -166,6 +166,107 @@ test("TimedRoleService.removeTimedRole removes from Discord then deletes from da
   assert.equal(notificationCalls.length, 1);
   assert.equal(notificationCalls[0]?.channelId, "log-channel-1");
   assert.match(notificationCalls[0]?.content ?? "", /removed <@&role-1> from <@user-1>/);
+});
+
+test("TimedRoleService.assignConfiguredNewMemberRole assigns the configured role until expiry", async () => {
+  const upsertedRoles: TimedRoleAssignment[] = [];
+  const assignedRoles: Array<{ guildId: string; userId: string; roleId: string }> = [];
+  const notificationCalls: Array<{ channelId: string; content?: string }> = [];
+  const config: NewMemberTimedRoleConfig = {
+    guildId: "guild-1",
+    roleId: "role-newbie",
+    durationInput: "2h",
+  };
+
+  const store: TimedRoleStore = {
+    async readNewMemberTimedRoleConfig(guildId: string) {
+      return guildId === config.guildId
+        ? config
+        : { guildId, roleId: null, durationInput: null };
+    },
+    async upsertTimedRole(role: TimedRoleAssignment) {
+      upsertedRoles.push(role);
+    },
+    async deleteTimedRole() {},
+    async listTimedRoles() {
+      return [];
+    },
+    async listTimedRolesByGuild() {
+      return [];
+    },
+    async listExpiredTimedRoles() {
+      return [];
+    },
+  };
+
+  const service = new TimedRoleService(
+    store,
+    "bot-token",
+    async (guildId: string, userId: string, roleId: string) => {
+      assignedRoles.push({ guildId, userId, roleId });
+    },
+    undefined,
+    {
+      readGuildNotificationChannel: async () => "log-channel-1",
+    },
+    async (channelId, body) => {
+      notificationCalls.push({ channelId, content: body.content });
+    }
+  );
+
+  const assignment = await service.assignConfiguredNewMemberRole({
+    guildId: "guild-1",
+    userId: "user-1",
+    nowMs: 1_700_000_000_000,
+  });
+
+  assert.deepEqual(assignment, {
+    guildId: "guild-1",
+    userId: "user-1",
+    roleId: "role-newbie",
+    durationInput: "2h",
+    expiresAtMs: 1_700_007_200_000,
+  });
+  assert.deepEqual(upsertedRoles, [assignment]);
+  assert.deepEqual(assignedRoles, [
+    { guildId: "guild-1", userId: "user-1", roleId: "role-newbie" },
+  ]);
+  assert.equal(notificationCalls.length, 1);
+  assert.match(notificationCalls[0]?.content ?? "", /New member automation/);
+});
+
+test("TimedRoleService.assignConfiguredNewMemberRole skips when no join role is configured", async () => {
+  const store: TimedRoleStore = {
+    async readNewMemberTimedRoleConfig(guildId: string) {
+      return { guildId, roleId: null, durationInput: null };
+    },
+    async upsertTimedRole() {
+      assert.fail("should not persist an assignment without a configured role");
+    },
+    async deleteTimedRole() {},
+    async listTimedRoles() {
+      return [];
+    },
+    async listTimedRolesByGuild() {
+      return [];
+    },
+    async listExpiredTimedRoles() {
+      return [];
+    },
+  };
+
+  const service = new TimedRoleService(store, "bot-token", async () => {
+    assert.fail("should not call Discord without a configured role");
+  });
+
+  assert.equal(
+    await service.assignConfiguredNewMemberRole({
+      guildId: "guild-1",
+      userId: "user-1",
+      nowMs: 1_700_000_000_000,
+    }),
+    null
+  );
 });
 
 test("assignTimedRole rolls back persisted state when the Discord add fails", async () => {

@@ -421,6 +421,70 @@ test("ModerationStoreDO upserts and lists active timed roles by guild", async ()
   assert.deepEqual(alarms, [1_700_604_800_000]);
 });
 
+test("ModerationStoreDO stores new member timed role configuration", async () => {
+  const ctx = {
+    storage: {
+      sql: createFakeSql(),
+      setAlarm() {
+        return Promise.resolve();
+      },
+    },
+  } as unknown as DurableObjectState;
+
+  const store = new ModerationStoreDO(
+    ctx,
+    { BOT_USER_ID: "bot-1", DISCORD_BOT_TOKEN: "token" } as never
+  );
+
+  const saveResponse = await store.fetch(
+    new Request("https://moderation-store/timed-role/new-member-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guildId: "guild-1",
+        roleId: "role-newbie",
+        durationInput: "2h",
+      }),
+    })
+  );
+
+  assert.equal(saveResponse.status, 200);
+
+  const readResponse = await store.fetch(
+    new Request("https://moderation-store/timed-role/new-member-config?guildId=guild-1")
+  );
+
+  assert.deepEqual(await readResponse.json(), {
+    guildId: "guild-1",
+    roleId: "role-newbie",
+    durationInput: "2h",
+  });
+
+  const disableResponse = await store.fetch(
+    new Request("https://moderation-store/timed-role/new-member-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guildId: "guild-1",
+        roleId: null,
+        durationInput: null,
+      }),
+    })
+  );
+
+  assert.equal(disableResponse.status, 200);
+
+  const disabledReadResponse = await store.fetch(
+    new Request("https://moderation-store/timed-role/new-member-config?guildId=guild-1")
+  );
+
+  assert.deepEqual(await disabledReadResponse.json(), {
+    guildId: "guild-1",
+    roleId: null,
+    durationInput: null,
+  });
+});
+
 test("ModerationStoreDO replaces timed role expiry when upserting the same assignment", async () => {
   const originalNow = Date.now;
   const alarms: number[] = [];
@@ -975,6 +1039,15 @@ function createFakeSql(options?: {
       updated_at_ms: number;
     }
   >();
+  const newMemberTimedRoleConfigs = new Map<
+    string,
+    {
+      guild_id: string;
+      role_id: string;
+      duration_input: string;
+      updated_at_ms: number;
+    }
+  >();
   const ticketPanels = new Map<
     string,
     {
@@ -1129,6 +1202,10 @@ function createFakeSql(options?: {
         return timedRoles.size > 0 ? [{ 1: 1 }] : [];
       }
 
+      if (query === "SELECT 1 FROM new_member_timed_role_configs LIMIT 1") {
+        return newMemberTimedRoleConfigs.size > 0 ? [{ 1: 1 }] : [];
+      }
+
       if (query === "SELECT 1 FROM ticket_panels LIMIT 1") {
         return ticketPanels.size > 0 ? [{ 1: 1 }] : [];
       }
@@ -1167,6 +1244,40 @@ function createFakeSql(options?: {
           duration_input,
           expires_at_ms,
           created_at_ms: existing?.created_at_ms ?? created_at_ms,
+          updated_at_ms,
+        });
+        return [];
+      }
+
+      if (
+        query ===
+        "SELECT role_id, duration_input FROM new_member_timed_role_configs WHERE guild_id = ?"
+      ) {
+        const row = newMemberTimedRoleConfigs.get(params[0] as string);
+        return row
+          ? [{ role_id: row.role_id, duration_input: row.duration_input }]
+          : [];
+      }
+
+      if (query === "DELETE FROM new_member_timed_role_configs WHERE guild_id = ?") {
+        newMemberTimedRoleConfigs.delete(params[0] as string);
+        return [];
+      }
+
+      if (
+        query ===
+        "INSERT INTO new_member_timed_role_configs(guild_id, role_id, duration_input, updated_at_ms) VALUES(?, ?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET role_id = excluded.role_id, duration_input = excluded.duration_input, updated_at_ms = excluded.updated_at_ms"
+      ) {
+        const [guild_id, role_id, duration_input, updated_at_ms] = params as [
+          string,
+          string,
+          string,
+          number,
+        ];
+        newMemberTimedRoleConfigs.set(guild_id, {
+          guild_id,
+          role_id,
+          duration_input,
           updated_at_ms,
         });
         return [];

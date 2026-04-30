@@ -4,8 +4,9 @@ export const GATEWAY_OP_IDENTIFY = 2;
 export const GATEWAY_OP_RESUME = 6;
 
 const GUILD_INTENT = 1 << 0;
+const GUILD_MEMBERS_INTENT = 1 << 1;
 const GUILD_MESSAGE_REACTIONS_INTENT = 1 << 10;
-const DEFAULT_GATEWAY_INTENTS = GUILD_INTENT | GUILD_MESSAGE_REACTIONS_INTENT;
+const DEFAULT_GATEWAY_INTENTS = GUILD_INTENT | GUILD_MEMBERS_INTENT | GUILD_MESSAGE_REACTIONS_INTENT;
 const DEFAULT_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30000;
 const GATEWAY_CLIENT_IDENTITY = "discord-automation-workers";
@@ -80,7 +81,10 @@ export function buildHeartbeatPayload(
 }
 
 export function shouldHandleDispatch(event: GatewayDispatchEnvelope): boolean {
-  return event.op === GATEWAY_OP_DISPATCH && event.t === "MESSAGE_REACTION_ADD";
+  return (
+    event.op === GATEWAY_OP_DISPATCH &&
+    (event.t === "MESSAGE_REACTION_ADD" || event.t === "GUILD_MEMBER_ADD")
+  );
 }
 
 export function nextBackoffMillis(attempt: number): number {

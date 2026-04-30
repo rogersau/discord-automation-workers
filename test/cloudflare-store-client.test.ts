@@ -257,6 +257,42 @@ test("createCloudflareStoreClient.deleteTimedRole sends POST to /timed-role/remo
   ]);
 });
 
+test("createCloudflareStoreClient reads and writes new member timed-role config", async () => {
+  const requests: Array<{ url: string; method: string; body: string | null }> = [];
+  const storeClient = createCloudflareStoreClient({
+    fetch(input, init) {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return Promise.resolve(
+        Response.json({
+          guildId: "guild-123",
+          roleId: "role-newbie",
+          durationInput: "2h",
+        }) as any
+      );
+    },
+  });
+
+  const config = await storeClient.readNewMemberTimedRoleConfig("guild-123");
+  await storeClient.upsertNewMemberTimedRoleConfig(config);
+
+  assert.deepEqual(requests, [
+    {
+      url: "https://moderation-store/timed-role/new-member-config?guildId=guild-123",
+      method: "GET",
+      body: null,
+    },
+    {
+      url: "https://moderation-store/timed-role/new-member-config",
+      method: "POST",
+      body: JSON.stringify(config),
+    },
+  ]);
+});
+
 test("createCloudflareStoreClient throws descriptive error on non-ok response", async () => {
   const storeClient = createCloudflareStoreClient({
     fetch() {

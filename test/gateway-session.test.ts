@@ -764,7 +764,7 @@ function mockDateNow(now: number) {
   };
 }
 
-test("handleGatewayDispatch moderates MESSAGE_REACTION_ADD events and ignores unrelated dispatches", async () => {
+test("handleGatewayDispatch routes reaction and guild member add events", async () => {
   const calls: string[] = [];
 
   await handleGatewayDispatch(
@@ -775,11 +775,21 @@ test("handleGatewayDispatch moderates MESSAGE_REACTION_ADD events and ignores un
   );
 
   await handleGatewayDispatch(
+    { op: 0, t: "GUILD_MEMBER_ADD", d: { guild_id: "guild-1", user: { id: "user-1" } } },
+    async () => {
+      calls.push("unexpected-reaction");
+    },
+    async (member) => {
+      calls.push(`member:${member?.guild_id}:${member?.user?.id}`);
+    }
+  );
+
+  await handleGatewayDispatch(
     { op: 0, t: "READY", d: {} },
     async () => {
       calls.push("unexpected");
     }
   );
 
-  assert.deepEqual(calls, ["moderate"]);
+  assert.deepEqual(calls, ["moderate", "member:guild-1:user-1"]);
 });

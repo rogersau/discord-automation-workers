@@ -65,9 +65,20 @@ export function AdminOverviewPage({
         <CardHeader>
           <CardTitle>Quick actions</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          <Button onClick={() => void onStartGateway()}>Start gateway</Button>
-          <Button variant="outline" onClick={() => void onRefresh()}>
+        <CardContent className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => void onStartGateway()}
+          >
+            Start gateway
+          </Button>
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            variant="outline"
+            onClick={() => void onRefresh()}
+          >
             Refresh dashboard
           </Button>
         </CardContent>

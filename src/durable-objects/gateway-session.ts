@@ -1,12 +1,19 @@
 import type { Env } from "../env";
+import { addGuildMemberRole, createChannelMessage } from "../discord";
 import {
   buildHeartbeatPayload,
   buildIdentifyPayload,
   buildResumePayload,
   nextBackoffMillis,
 } from "../gateway";
-import { moderateReactionAdd } from "../reaction-moderation";
-import { handleGatewayDispatch } from "../services/gateway/handle-gateway-dispatch";
+import { getModerationStoreStub, moderateReactionAdd } from "../reaction-moderation";
+import { TimedRoleService } from "../services/timed-role-service";
+import { createCloudflareStoreClient } from "../runtime/cloudflare-store-client";
+import type { GuildNotificationChannelStore } from "../services/moderation-log";
+import {
+  handleGatewayDispatch,
+  type DiscordGuildMemberAdd,
+} from "../services/gateway/handle-gateway-dispatch";
 
 const DEFAULT_GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
 
@@ -154,8 +161,10 @@ export class GatewaySessionDO implements DurableObject {
         return;
       }
 
-      await handleGatewayDispatch(payload, (reaction) =>
-        moderateReactionAdd(reaction, this.env)
+      await handleGatewayDispatch(
+        payload,
+        (reaction) => moderateReactionAdd(reaction, this.env),
+        (member) => handleNewMemberTimedRole(member, this.env)
       );
 
       if (payload.t === "READY" && isReadyPayload(payload.d)) {
@@ -342,6 +351,46 @@ function isReadyPayload(
     typeof data.session_id === "string" &&
     typeof data.resume_gateway_url === "string"
   );
+}
+
+async function handleNewMemberTimedRole(
+  member: DiscordGuildMemberAdd | null,
+  env: Env
+): Promise<void> {
+  const guildId = member?.guild_id;
+  const userId = member?.user?.id;
+
+  if (!guildId || !userId) {
+    return;
+  }
+
+  const storeClient = createCloudflareStoreClient(getModerationStoreStub(env));
+  const timedRoleService = new TimedRoleService(
+    {
+      listTimedRoles: storeClient.listTimedRoles,
+      listTimedRolesByGuild: storeClient.listTimedRolesByGuild,
+      upsertTimedRole: storeClient.upsertTimedRole,
+      deleteTimedRole: storeClient.deleteTimedRole,
+      async listExpiredTimedRoles() {
+        return [];
+      },
+      readNewMemberTimedRoleConfig: storeClient.readNewMemberTimedRoleConfig,
+      upsertNewMemberTimedRoleConfig: storeClient.upsertNewMemberTimedRoleConfig,
+    },
+    env.DISCORD_BOT_TOKEN,
+    (nextGuildId, nextUserId, roleId) =>
+      addGuildMemberRole(nextGuildId, nextUserId, roleId, env.DISCORD_BOT_TOKEN),
+    undefined,
+    storeClient as Partial<GuildNotificationChannelStore>,
+    (channelId, body) =>
+      createChannelMessage(channelId, body, env.DISCORD_BOT_TOKEN).then(() => undefined)
+  );
+
+  try {
+    await timedRoleService.assignConfiguredNewMemberRole({ guildId, userId });
+  } catch (error) {
+    console.error("Failed to assign configured new member timed role", error);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

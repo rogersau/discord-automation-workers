@@ -110,6 +110,8 @@ export function createCloudflareContext(env: Env): RuntimeAppContext {
           // Cloudflare: Durable Object alarms handle expiry automatically; polling not needed
           return [];
         },
+        readNewMemberTimedRoleConfig: storeClient.readNewMemberTimedRoleConfig,
+        upsertNewMemberTimedRoleConfig: storeClient.upsertNewMemberTimedRoleConfig,
       },
       tickets: {
         reserveNextTicketNumber: storeClient.reserveNextTicketNumber,

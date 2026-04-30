@@ -18,7 +18,7 @@ test("buildIdentifyPayload creates the expected gateway identify frame", () => {
     op: 2,
     d: {
       token: "bot-token",
-      intents: 1025,
+      intents: 1027,
       properties: {
         os: "cloudflare",
         browser: "discord-automation-workers",
@@ -60,6 +60,18 @@ test("shouldHandleDispatch returns true for message reaction add events", () => 
       t: "MESSAGE_REACTION_ADD",
       s: 101,
       d: { message_id: "message-1" },
+    }),
+    true
+  );
+});
+
+test("shouldHandleDispatch returns true for guild member add events", () => {
+  assert.equal(
+    shouldHandleDispatch({
+      op: 0,
+      t: "GUILD_MEMBER_ADD",
+      s: 102,
+      d: { guild_id: "guild-1", user: { id: "user-1" } },
     }),
     true
   );

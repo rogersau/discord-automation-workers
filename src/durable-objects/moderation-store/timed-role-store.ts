@@ -1,4 +1,8 @@
-import type { TimedRoleAssignment, TimedRoleRow } from "../../types";
+import type {
+  NewMemberTimedRoleConfig,
+  TimedRoleAssignment,
+  TimedRoleRow,
+} from "../../types";
 
 export function upsertTimedRole(
   sql: DurableObjectStorage["sql"],
@@ -70,6 +74,45 @@ export function getNextTimedRoleExpiryMs(sql: DurableObjectStorage["sql"]): numb
   }
 
   return nextRow.expires_at_ms as number;
+}
+
+export function readNewMemberTimedRoleConfig(
+  sql: DurableObjectStorage["sql"],
+  guildId: string
+): NewMemberTimedRoleConfig {
+  const row = [
+    ...sql.exec(
+      "SELECT role_id, duration_input FROM new_member_timed_role_configs WHERE guild_id = ?",
+      guildId
+    ),
+  ][0] as Record<string, unknown> | undefined;
+
+  return {
+    guildId,
+    roleId: (row?.role_id as string | undefined) ?? null,
+    durationInput: (row?.duration_input as string | undefined) ?? null,
+  };
+}
+
+export function upsertNewMemberTimedRoleConfig(
+  sql: DurableObjectStorage["sql"],
+  body: NewMemberTimedRoleConfig
+): void {
+  if (!body.roleId || !body.durationInput) {
+    sql.exec(
+      "DELETE FROM new_member_timed_role_configs WHERE guild_id = ?",
+      body.guildId
+    );
+    return;
+  }
+
+  sql.exec(
+    "INSERT INTO new_member_timed_role_configs(guild_id, role_id, duration_input, updated_at_ms) VALUES(?, ?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET role_id = excluded.role_id, duration_input = excluded.duration_input, updated_at_ms = excluded.updated_at_ms",
+    body.guildId,
+    body.roleId,
+    body.durationInput,
+    Date.now()
+  );
 }
 
 function readTimedRoleSelections(

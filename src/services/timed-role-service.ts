@@ -3,6 +3,7 @@ import type { TimedRoleAssignment } from "../types";
 import { assignTimedRole as assignTimedRoleWorkflow } from "./timed-roles/assign-timed-role";
 import { removeTimedRole as removeTimedRoleWorkflow } from "./timed-roles/remove-timed-role";
 import { listTimedRoles as listTimedRolesWorkflow } from "./timed-roles/list-timed-roles";
+import { parseTimedRoleDuration } from "../timed-roles";
 import {
   buildTimedRoleUpdateMessage,
   postGuildModerationUpdate,
@@ -79,6 +80,52 @@ export class TimedRoleService {
 
   async listTimedRoles(guildId: string): Promise<TimedRoleAssignment[]> {
     return listTimedRolesWorkflow(this.store, guildId);
+  }
+
+  async getNewMemberTimedRoleConfig(guildId: string) {
+    return this.store.readNewMemberTimedRoleConfig?.(guildId) ?? {
+      guildId,
+      roleId: null,
+      durationInput: null,
+    };
+  }
+
+  async updateNewMemberTimedRoleConfig(input: {
+    guildId: string;
+    roleId: string | null;
+    durationInput: string | null;
+  }): Promise<void> {
+    await this.store.upsertNewMemberTimedRoleConfig?.(input);
+  }
+
+  async assignConfiguredNewMemberRole(input: {
+    guildId: string;
+    userId: string;
+    nowMs?: number;
+  }): Promise<TimedRoleAssignment | null> {
+    const config = await this.getNewMemberTimedRoleConfig(input.guildId);
+    if (!config.roleId || !config.durationInput) {
+      return null;
+    }
+
+    const parsedDuration = parseTimedRoleDuration(
+      config.durationInput,
+      input.nowMs ?? Date.now()
+    );
+    if (!parsedDuration) {
+      return null;
+    }
+
+    const assignment = {
+      guildId: input.guildId,
+      userId: input.userId,
+      roleId: config.roleId,
+      durationInput: parsedDuration.durationInput,
+      expiresAtMs: parsedDuration.expiresAtMs,
+    };
+
+    await this.assignTimedRole(assignment, { label: "New member automation" });
+    return assignment;
   }
 
   private async postUpdate(

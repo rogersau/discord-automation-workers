@@ -1,4 +1,10 @@
-import type { BlocklistConfig, TimedRoleAssignment, TicketPanelConfig, TicketInstance } from "../types";
+import type {
+  BlocklistConfig,
+  NewMemberTimedRoleConfig,
+  TimedRoleAssignment,
+  TicketPanelConfig,
+  TicketInstance,
+} from "../types";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -127,6 +133,21 @@ export function createCloudflareStoreClient(storeStub: { fetch: FetchLike }) {
     async deleteTimedRole(body: { guildId: string; userId: string; roleId: string }): Promise<void> {
       await readJsonVoid(
         storeStub.fetch("https://moderation-store/timed-role/remove", {
+          method: "POST",
+          body: JSON.stringify(body),
+        })
+      );
+    },
+    async readNewMemberTimedRoleConfig(guildId: string): Promise<NewMemberTimedRoleConfig> {
+      return readJson<NewMemberTimedRoleConfig>(
+        storeStub.fetch(
+          `https://moderation-store/timed-role/new-member-config?guildId=${encodeURIComponent(guildId)}`
+        )
+      );
+    },
+    async upsertNewMemberTimedRoleConfig(body: NewMemberTimedRoleConfig): Promise<void> {
+      await readJsonVoid(
+        storeStub.fetch("https://moderation-store/timed-role/new-member-config", {
           method: "POST",
           body: JSON.stringify(body),
         })

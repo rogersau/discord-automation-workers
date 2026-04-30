@@ -7,6 +7,7 @@ import {
   parseGuildNotificationChannelMutation,
   parseTimedRoleUpsert,
   parseTimedRoleRemoval,
+  parseNewMemberTimedRoleConfig,
   parseAppConfigMutation,
   parseGuildIdRequest,
   parseTicketPanelConfig,
@@ -57,6 +58,12 @@ export class ModerationStoreDO implements DurableObject {
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL,
         PRIMARY KEY (guild_id, user_id, role_id)
+      );
+      CREATE TABLE IF NOT EXISTS new_member_timed_role_configs (
+        guild_id TEXT PRIMARY KEY,
+        role_id TEXT NOT NULL,
+        duration_input TEXT NOT NULL,
+        updated_at_ms INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS ticket_panels (
         guild_id TEXT PRIMARY KEY,
@@ -163,6 +170,27 @@ export class ModerationStoreDO implements DurableObject {
         return Response.json(
           guildId ? timedRoleStore.listTimedRolesByGuild(this.sql, guildId) : timedRoleStore.listTimedRoles(this.sql)
         );
+      } catch (error) {
+        return this.errorResponse(error);
+      }
+    }
+
+    if (request.method === "GET" && url.pathname === "/timed-role/new-member-config") {
+      try {
+        const guildId = asRequiredSearchParam(url.searchParams, "guildId");
+        return Response.json(
+          timedRoleStore.readNewMemberTimedRoleConfig(this.sql, guildId)
+        );
+      } catch (error) {
+        return this.errorResponse(error);
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/timed-role/new-member-config") {
+      try {
+        const body = parseNewMemberTimedRoleConfig(await request.json());
+        timedRoleStore.upsertNewMemberTimedRoleConfig(this.sql, body);
+        return Response.json({ ok: true });
       } catch (error) {
         return this.errorResponse(error);
       }

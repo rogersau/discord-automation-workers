@@ -47,6 +47,12 @@ export interface TimedRoleAssignment {
   expiresAtMs: number;
 }
 
+export interface NewMemberTimedRoleConfig {
+  guildId: string;
+  roleId: string | null;
+  durationInput: string | null;
+}
+
 // Effective blocklist config materialized from the moderation store.
 export interface BlocklistConfig {
   guilds: {

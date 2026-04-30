@@ -125,6 +125,22 @@ export function parseGuildNotificationChannelBody(body: unknown): {
   };
 }
 
+export function parseNewMemberTimedRoleConfigBody(body: unknown): {
+  guildId: string;
+  roleId: string | null;
+  duration: string | null;
+} {
+  if (!isRecord(body)) {
+    throw new AdminApiInputError("Invalid JSON body");
+  }
+
+  return {
+    guildId: asRequiredString(body.guildId, "guildId"),
+    roleId: asOptionalNullableString(body.roleId, "roleId"),
+    duration: asOptionalNullableString(body.duration, "duration"),
+  };
+}
+
 export function parseAppConfigMutation(body: unknown): {
   key: string;
   value: string;
